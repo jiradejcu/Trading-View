@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lagline Charts</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23131722'/><path d='M5 22 L12 14 L18 18 L27 8' stroke='%232962ff' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand" title="Lagline Charts">
+          <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path d="M5 22 L12 14 L18 18 L27 8" stroke="#2962ff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <button id="symbol-btn" class="tb-btn symbol-btn" title="Symbol search (/)">
+          <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><circle cx="7.5" cy="7.5" r="5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M11.5 11.5 L16 16" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span id="symbol-label">BTCUSD</span>
+        </button>
+        <button id="compare-btn" class="tb-btn" title="Compare symbol">＋ Compare</button>
+        <span class="sep"></span>
+        <div class="seg" id="tf-group" role="group" aria-label="Interval">
+          <button data-tf="D">1D</button><button data-tf="W">1W</button><button data-tf="M">1M</button>
+        </div>
+        <span class="sep"></span>
+        <select id="chart-type" class="tb-select" aria-label="Chart type">
+          <option value="candle">Candles</option>
+          <option value="bar">Bars</option>
+          <option value="line">Line</option>
+          <option value="area">Area</option>
+        </select>
+        <span class="sep"></span>
+        <button id="ind-btn" class="tb-btn" title="Indicators">ƒx Indicators</button>
+        <span class="spacer"></span>
+        <span id="source-badge" class="badge"></span>
+        <button id="watch-toggle" class="tb-btn only-narrow" title="Watchlist">☰</button>
+      </header>
+
+      <nav class="lefttools" aria-label="Drawing tools">
+        <button data-tool="cursor" class="active" title="Cursor (Esc)">
+          <svg viewBox="0 0 20 20" width="18" height="18"><path d="M5 3 L5 16 L8.5 12.5 L11 18 L13 17 L10.5 11.5 L15 11.5 Z" fill="currentColor"/></svg>
+        </button>
+        <button data-tool="trend" title="Trend line">
+          <svg viewBox="0 0 20 20" width="18" height="18"><path d="M3 16 L17 4" stroke="currentColor" stroke-width="1.6"/><circle cx="3.5" cy="15.5" r="2" fill="currentColor"/><circle cx="16.5" cy="4.5" r="2" fill="currentColor"/></svg>
+        </button>
+        <button data-tool="hline" title="Horizontal line">
+          <svg viewBox="0 0 20 20" width="18" height="18"><path d="M2 10 L18 10" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="10" r="2" fill="currentColor"/></svg>
+        </button>
+        <span class="tool-sep"></span>
+        <button id="clear-drawings" title="Remove drawings on this symbol">
+          <svg viewBox="0 0 20 20" width="18" height="18"><path d="M5 6 H15 M8 6 V4 H12 V6 M6.5 6 L7.3 17 H12.7 L13.5 6" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        </button>
+      </nav>
+
+      <main class="chart-area">
+        <div class="chart-head">
+          <div class="ch-title"><span id="ch-name"></span><span id="ch-desc" class="muted"></span></div>
+          <div class="ch-price"><span id="ch-last"></span><span id="ch-change"></span></div>
+          <div id="legend" class="legend"></div>
+        </div>
+        <div id="chart" class="chart"></div>
+        <div class="bottombar">
+          <div class="seg small" id="range-group" role="group" aria-label="Range">
+            <button data-range="0.25">3M</button><button data-range="0.5">6M</button><button data-range="1">1Y</button>
+            <button data-range="3">3Y</button><button data-range="5">5Y</button><button data-range="all">All</button>
+          </div>
+          <span class="spacer"></span>
+          <div class="seg small" id="scale-group" role="group" aria-label="Price scale">
+            <button data-scale="percent" title="Percent scale">%</button>
+            <button data-scale="log" title="Log scale">log</button>
+            <button data-scale="normal" title="Linear scale">auto</button>
+          </div>
+          <span id="clock" class="muted"></span>
+        </div>
+        <div id="loading" class="loading"><div class="spinner"></div><span id="loading-msg">Loading…</span></div>
+      </main>
+
+      <aside class="sidebar" id="sidebar">
+        <section id="model-panel" class="model-panel" hidden></section>
+        <section class="watchlist">
+          <div class="wl-head"><span>Watchlist</span></div>
+          <div class="wl-cols muted"><span>Symbol</span><span>Last</span><span>Chg%</span></div>
+          <div id="wl-rows"></div>
+        </section>
+      </aside>
+    </div>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <div id="modal" class="modal" hidden>
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head"><h2 id="modal-title">Symbol search</h2><button class="modal-close" aria-label="Close">✕</button></div>
+        <input id="modal-input" type="text" placeholder="Search" autocomplete="off" />
+        <div id="modal-list" class="modal-list"></div>
+      </div>
+    </div>
+    <div id="menu" class="menu" hidden></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
