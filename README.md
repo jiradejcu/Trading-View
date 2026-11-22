@@ -28,6 +28,12 @@ FRED and Yahoo Finance don't allow cross-origin browser requests, so the app tri
 
 The liquidity inputs are loaded as one group, so they never mix live and demo values.
 
+## Deployment
+
+Hosted at **https://trading-view.vatanutanon.me** on GitHub Pages. `.github/workflows/deploy.yml`
+builds on every push and once a day. Each run executes `npm run fetch-data` on the GitHub runner,
+so the static site ships with real data. `public/CNAME` holds the custom domain.
+
 ## Custom assets
 
 | Symbol | Definition |
