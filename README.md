@@ -76,15 +76,19 @@ contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). L
   under each new higher bottom.
 - **Re-entry**: after a stop-out, a close back above the stop level re-opens the long,
   with the stop under the lowest low since the stop-out.
-- **Bear-market filter**: new trades and re-entries only open while the close is at least
-  50% (settable) below the all-time high known at that bar: Binance daily highs since 2020 plus
-  Yahoo BTC history since 2012. Trades already open are still managed and exited.
+- **Active zones**: new trades and re-entries only open inside either zone. Trades already
+  open are still managed and exited.
+  - *Bear market*: the close is at least 50% (settable) below the all-time high known at that
+    bar: Binance daily highs since 2020 plus Yahoo BTC history since 2012.
+  - *Uptrend*: the close is above a rising EMA of 200 bars (settable; 0 = off).
 - Fees per side and real funding payments are charged. A bar that opens through the stop fills at its open. Slippage and
   liquidation aren't modelled.
 
 Defaults (4h, left 20, right 3, stop 0.5% under the bottom, no re-entry, ATH −50%) were
 picked by tuning on 2020–2023 and checking on 2024–2026, choosing the middle of the region that
-was profitable in both rather than the single best result.
+was profitable in both rather than the single best result. The uptrend zone (EMA 100–300 on 4h)
+added return in both halves at the cost of a higher drawdown (about 14% → 20%); used alone it
+only broke even.
 
 This is a backtest only; it places no orders.
 

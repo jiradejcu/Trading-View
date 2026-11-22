@@ -48,7 +48,11 @@ st.lag.dynamic ??= true; // dynamic leads are the default
 {
   const saved = st.bot as Partial<BotSettings> | undefined;
   // Settings saved under older defaults move to the current (optimized) ones once.
-  st.bot = saved?.v === BOT_DEFAULTS_VERSION ? { ...DEFAULT_BOT_SETTINGS, ...saved } : { ...DEFAULT_BOT_SETTINGS };
+  // v2 → v3 only added the uptrend zone: keep the user's other settings.
+  const { trendEma: _old, ...kept } = (saved ?? {}) as BotSettings & { trendEma?: number };
+  st.bot = saved?.v === BOT_DEFAULTS_VERSION ? { ...DEFAULT_BOT_SETTINGS, ...saved }
+    : saved?.v === 2 ? { ...DEFAULT_BOT_SETTINGS, ...kept, uptrendEma: DEFAULT_BOT_SETTINGS.uptrendEma, v: BOT_DEFAULTS_VERSION }
+    : { ...DEFAULT_BOT_SETTINGS };
 }
 const drawings: Record<string, Drawing[]> = load(DRAW_KEY, {});
 

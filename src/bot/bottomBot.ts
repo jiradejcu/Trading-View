@@ -25,10 +25,13 @@ export interface BotParams {
   right: number;
   /** Stop goes this % below the bottom's low. */
   slBufferPct: number;
-  /** Only take bottoms while the close is above the EMA of this length; 0 = off. */
-  trendEma: number;
-  /** Only open trades while price is at least this % below its all-time high; 0 = off. */
+  /** Bear-market zone: open trades while price is at least this % below its all-time high; 0 = off. */
   athDrawdownPct: number;
+  /**
+   * Uptrend zone: also open trades while the close is above the EMA of this many bars
+   * and that EMA is rising; 0 = off. Either zone is enough.
+   */
+  uptrendEma: number;
   /** % of equity lost if the stop is hit (before fees and slippage). */
   riskPct: number;
   /** Position notional is capped at this multiple of equity. */
@@ -48,13 +51,15 @@ export interface BotParams {
  * Tuned on Binance 4h data from 2020–2023 and checked on 2024–2026 (unseen): the region
  * left 10–30 / right 2–5 / buffer 0.5% / no re-entry was profitable in both halves;
  * these are its middle. Finer tuning didn't carry over to the unseen period.
+ * The uptrend zone (EMA 100–300 on 4h) added return in both halves for a higher drawdown;
+ * on its own, without the bear-market zone, it only broke even.
  */
 export const DEFAULT_BOT: BotParams = {
   left: 20,
   right: 3,
   slBufferPct: 0.5,
-  trendEma: 0,
   athDrawdownPct: 50,
+  uptrendEma: 200,
   riskPct: 1,
   maxLeverage: 5,
   feePct: 0.05,
@@ -96,6 +101,8 @@ export interface BacktestResult {
   bottoms: { time: number; price: number; taken: boolean }[];
   /** The bear-market trigger level (ATH × (1 − drawdown)) at each bar; empty when off. */
   zone: { time: number; value: number }[];
+  /** Uptrend EMA (empty when off). */
+  uptrend: { time: number; value: number }[];
   stats: BacktestStats;
 }
 
@@ -170,10 +177,12 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
   const equityCurve: BacktestResult['equity'] = [];
   const stops: BacktestResult['stops'] = [];
   const bottoms: BacktestResult['bottoms'] = [];
-  const trend = p.trendEma > 0 ? ema(bars.map((b) => b.close), p.trendEma) : null;
+  const trend = p.uptrendEma > 0 ? ema(bars.map((b) => b.close), p.uptrendEma) : null;
   const athAt = ath ?? athSeries(bars);
   const zoneLevel = (i: number) => athAt[i] * (1 - p.athDrawdownPct / 100);
-  const inZone = (i: number) => p.athDrawdownPct <= 0 || bars[i].close <= zoneLevel(i);
+  const inBear = (i: number) => p.athDrawdownPct > 0 && bars[i].close <= zoneLevel(i);
+  const inUptrend = (i: number) => !!trend && i > 0 && Number.isFinite(trend[i - 1]) && bars[i].close > trend[i] && trend[i] > trend[i - 1];
+  const inZone = (i: number) => (p.athDrawdownPct <= 0 && !trend) || inBear(i) || inUptrend(i);
   const zone: BacktestResult['zone'] = p.athDrawdownPct > 0 ? bars.map((b, i) => ({ time: b.time, value: zoneLevel(i) })) : [];
   const buf = 1 - p.slBufferPct / 100;
   const fee = p.feePct / 100;
@@ -257,11 +266,10 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
     if (k >= 0) {
       const bottom = bars[k].low;
       const stop = bottom * buf;
-      const trendOk = !trend || (Number.isFinite(trend[i]) && b.close > trend[i]);
       let taken = false;
       if (pos) {
         if (stop > pos.stop && stop < b.close) pos.stop = stop; // trail up to the higher low
-      } else if (trendOk && inZone(i) && i < bars.length - 1) {
+      } else if (inZone(i) && i < bars.length - 1) {
         pending = { stop, bottom, bottomTime: bars[k].time, reentry: false };
         rearm = null; // a fresh bottom replaces the re-entry setup
         taken = true;
@@ -295,7 +303,8 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
     });
   }
 
-  return { trades, equity: equityCurve, stops, bottoms, zone, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
+  const uptrend = trend ? bars.flatMap((b, i) => (Number.isFinite(trend[i]) ? [{ time: b.time, value: trend[i] }] : [])) : [];
+  return { trades, equity: equityCurve, stops, bottoms, zone, uptrend, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
 }
 
 function stats(bars: Bar[], trades: Trade[], eq: { value: number }[], start: number, barsIn: number): BacktestStats {

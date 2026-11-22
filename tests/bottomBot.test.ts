@@ -12,7 +12,7 @@ function barsFromLows(lows: number[], highs?: number[]): Bar[] {
   });
 }
 
-const P: BotParams = { ...DEFAULT_BOT, left: 3, right: 2, slBufferPct: 1, funding: false, feePct: 0, riskPct: 1, maxLeverage: 100, athDrawdownPct: 0 };
+const P: BotParams = { ...DEFAULT_BOT, left: 3, right: 2, slBufferPct: 1, funding: false, feePct: 0, riskPct: 1, maxLeverage: 100, athDrawdownPct: 0, uptrendEma: 0 };
 
 describe('confirmedBottom', () => {
   const lows = [105, 104, 103, 100, 101, 102, 103];
@@ -116,5 +116,21 @@ describe('bear-market filter', () => {
     expect(backtest(bars, { ...P, athDrawdownPct: 50 }, [], 1, high).trades.length).toBe(0);
     const higher = athSeries(bars, [{ time: -86400, open: 1, high: 250_000, low: 1, close: 1 }]); // ~59% down
     expect(backtest(bars, { ...P, athDrawdownPct: 50 }, [], 1, higher).trades.length).toBe(1);
+  });
+
+  it('the uptrend zone also allows entries above a rising EMA', () => {
+    // steady climb with one dip: the bottom forms above a rising EMA, far from any bear market
+    const up = [90, 92, 94, 96, 98, 100, 102, 104, 106, 108, 107, 106, 105, 103, 106, 108, 110, 112, 114];
+    const bars = barsFromLows(up);
+    const high = athSeries(bars, [{ time: -86400, open: 1, high: 120_000, low: 1, close: 1 }]); // only ~10% down
+    expect(backtest(bars, { ...P, athDrawdownPct: 50 }, [], 1, high).trades.length).toBe(0);
+    const r = backtest(bars, { ...P, athDrawdownPct: 50, uptrendEma: 5 }, [], 1, high);
+    expect(r.trades.length).toBe(1);
+    expect(r.uptrend.length).toBeGreaterThan(0);
+    // a falling market under the same EMA stays blocked
+    const down = barsFromLows([120, 118, 116, 114, 112, 110, 108, 106, 104, 102, 103, 104, 103, 101, 99, 97]);
+    const downAth = athSeries(down, [{ time: -86400, open: 1, high: 130_000, low: 1, close: 1 }]);
+    expect(backtest(down, { ...P, athDrawdownPct: 0, uptrendEma: 0 }, [], 1, downAth).trades.length).toBe(1); // a bottom exists
+    expect(backtest(down, { ...P, athDrawdownPct: 50, uptrendEma: 5 }, [], 1, downAth).trades.length).toBe(0);
   });
 });
