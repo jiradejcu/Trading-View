@@ -23,16 +23,17 @@ npm run build      # static build in dist/
 FRED and Yahoo Finance don't allow cross-origin browser requests, so the app tries these sources in order, **for each series**:
 
 1. **Live**: `npm run dev` / `npm run preview` proxy `/api/fred` → fred.stlouisfed.org and `/api/yahoo` → query1.finance.yahoo.com (see `vite.config.ts`).
-2. **Snapshot**: `public/data/snapshot.json`, written by `npm run fetch-data`. Use this for a static deploy (e.g. GitHub Pages), and re-run it to refresh.
+2. **Snapshot**: `public/data/snapshot.json`, written by `npm run fetch-data`. Use this for a static deploy, and re-run it to refresh.
 3. **Demo**: deterministic synthetic data generated in the browser. It is **not market data**: the header badge, the watchlist `DEMO` tags and a banner all say so.
 
 The liquidity inputs are loaded as one group, so they never mix live and demo values.
 
 ## Deployment
 
-Hosted at **https://trading-view.vatanutanon.me** on GitHub Pages. `.github/workflows/deploy.yml`
-builds on every push and once a day. Each run executes `npm run fetch-data` on the GitHub runner,
-so the static site ships with real data. `public/CNAME` holds the custom domain.
+Self-hosted at **https://tradingview.vatanutanon.me**: `vite preview` (with the live data proxy)
+runs on `127.0.0.1:4173` as the user service `trading-view-web`, and the Cloudflare tunnel
+`trading-view` (`~/.cloudflared/trading-view.yml`, service `trading-view-tunnel`) exposes it.
+After code changes: `npm run build && systemctl --user restart trading-view-web`.
 
 ## Custom assets
 
