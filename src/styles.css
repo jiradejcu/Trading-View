@@ -54,6 +54,10 @@ button { cursor: pointer; }
 .badge.snapshot { color: var(--s1); border-color: rgba(57,135,229,.4); }
 .badge.demo { color: var(--warn-text); border-color: rgba(242,201,76,.4); }
 .only-narrow { display: none; }
+/* Candles/bars need open-high-low-close prices: hide the chart type for calculated
+   lines (GLI) and everything price-chart specific for the lag model. */
+.topbar[data-kind="line"] #chart-type, .topbar[data-kind="line"] #chart-type + .sep,
+.topbar[data-kind="model"] :is(#compare-btn, #tf-group, #chart-type, #ind-btn, .sep) { display: none; }
 
 .lefttools { grid-area: tools; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px;
   border-right: 4px solid #0c0e15; }

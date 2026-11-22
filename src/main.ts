@@ -101,7 +101,8 @@ function render() {
     $('#ch-change').innerHTML = `<span class="${ch >= 0 ? 'up' : 'down'}">${ch >= 0 ? '+' : ''}${fmtNum(ch, def.precision)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
   }
 
-  // Toolbar state
+  // Toolbar state: controls that don't apply to this symbol are hidden (see .topbar[data-kind] CSS).
+  $('.topbar').dataset.kind = def.kind;
   document.querySelectorAll<HTMLButtonElement>('#tf-group button').forEach((b) => {
     b.classList.toggle('active', b.dataset.tf === st.tf);
     b.disabled = isModel || (def.kind === 'line' && b.dataset.tf === 'D');
