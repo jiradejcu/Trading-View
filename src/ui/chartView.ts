@@ -114,7 +114,8 @@ export class ChartView {
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: C.border },
       leftPriceScale: { borderColor: C.border, visible: false },
-      timeScale: { borderColor: C.border, rightOffset: 6 },
+      // Low floor so years of 4h/1h candles can be zoomed out to fit one screen.
+      timeScale: { borderColor: C.border, rightOffset: 6, minBarSpacing: 0.02 },
     });
     this.chart = chart;
     this.el.appendChild(this.canvas); // keep overlay above the chart's own canvases
