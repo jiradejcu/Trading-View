@@ -53,7 +53,15 @@ export async function fetchFunding(startSec: number): Promise<FundingEvent[]> {
   return out;
 }
 
-const cache = new Map<string, Promise<{ bars: Bar[]; funding: FundingEvent[] }>>();
+/** Contract launch (Aug 2020); daily history from here feeds the all-time high. */
+const LAUNCH_SEC = Math.floor(Date.UTC(2020, 7, 1) / 1000);
+let dailyAll: Promise<Bar[]> | null = null;
+export function loadDailyHistory() {
+  dailyAll ??= fetchKlines('1d', LAUNCH_SEC).catch((e) => { dailyAll = null; throw e; });
+  return dailyAll;
+}
+
+const cache = new Map<string, Promise<{ bars: Bar[]; funding: FundingEvent[]; daily: Bar[] }>>();
 
 /** Cached per interval and lookback. */
 export function loadBotData(interval: BotInterval, years: number) {
@@ -61,8 +69,8 @@ export function loadBotData(interval: BotInterval, years: number) {
   let p = cache.get(key);
   if (!p) {
     const startSec = Math.floor(Date.now() / 1000 - years * 365.25 * 86400);
-    p = Promise.all([fetchKlines(interval, startSec), fetchFunding(startSec).catch(() => [])])
-      .then(([bars, funding]) => ({ bars, funding }));
+    p = Promise.all([fetchKlines(interval, startSec), fetchFunding(startSec).catch(() => []), loadDailyHistory()])
+      .then(([bars, funding, daily]) => ({ bars, funding, daily }));
     p.catch(() => cache.delete(key));
     cache.set(key, p);
   }

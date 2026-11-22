@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTRACT_USD, DEFAULT_BOT, backtest, confirmedBottom, type BotParams } from '../src/bot/bottomBot';
+import { CONTRACT_USD, DEFAULT_BOT, athSeries, backtest, confirmedBottom, type BotParams } from '../src/bot/bottomBot';
 import type { Bar } from '../src/lib/types';
 
 const H = 3600;
@@ -12,7 +12,7 @@ function barsFromLows(lows: number[], highs?: number[]): Bar[] {
   });
 }
 
-const P: BotParams = { ...DEFAULT_BOT, left: 3, right: 2, slBufferPct: 1, tpR: 2, trail: false, funding: false, feePct: 0, riskPct: 1, maxLeverage: 100 };
+const P: BotParams = { ...DEFAULT_BOT, left: 3, right: 2, slBufferPct: 1, tpR: 2, trail: false, funding: false, feePct: 0, riskPct: 1, maxLeverage: 100, athDrawdownPct: 0 };
 
 describe('confirmedBottom', () => {
   const lows = [105, 104, 103, 100, 101, 102, 103];
@@ -101,5 +101,22 @@ describe('stop management', () => {
     const off = backtest(barsFromLows(lows, highs), { ...P, tpR: 0, reentry: false });
     expect(off.trades[1].reentry).toBe(false);
     expect(off.trades[1].entryTime).toBe(10 * H);
+  });
+});
+
+describe('bear-market filter', () => {
+  const lows = [105, 104, 103, 100, 101, 102, 103, 104, 105, 106];
+  it('ATH only uses history from days that have ended', () => {
+    const bars = barsFromLows(lows); // hourly, starting at t=0
+    const hist = [{ time: -86400, open: 1, high: 300_000, low: 1, close: 1 }, { time: 0, open: 1, high: 900_000, low: 1, close: 1 }];
+    const ath = athSeries(bars, hist);
+    expect(ath[0]).toBe(300_000); // today's daily bar (high 900k) isn't finished yet
+  });
+  it('blocks entries above the zone and allows them inside it', () => {
+    const bars = barsFromLows(lows);
+    const high = athSeries(bars, [{ time: -86400, open: 1, high: 150_000, low: 1, close: 1 }]); // ~32% down
+    expect(backtest(bars, { ...P, athDrawdownPct: 50 }, [], 1, high).trades.length).toBe(0);
+    const higher = athSeries(bars, [{ time: -86400, open: 1, high: 250_000, low: 1, close: 1 }]); // ~59% down
+    expect(backtest(bars, { ...P, athDrawdownPct: 50 }, [], 1, higher).trades.length).toBe(1);
   });
 });

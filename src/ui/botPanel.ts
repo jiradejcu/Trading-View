@@ -7,11 +7,12 @@ import { fmtDate } from '../lib/time';
 
 export interface BotSettings extends BotParams { interval: BotInterval; years: number }
 
-export const DEFAULT_BOT_SETTINGS: BotSettings = { ...DEFAULT_BOT, interval: '4h', years: 2 };
+// 6 years reaches back to 2021, so the bear-market filter has more than one bear market to act on.
+export const DEFAULT_BOT_SETTINGS: BotSettings = { ...DEFAULT_BOT, interval: '4h', years: 6 };
 
-const YEARS: Record<BotInterval, number[]> = { '1h': [0.5, 1, 2], '4h': [1, 2, 3, 5], '1d': [2, 3, 5, 6] };
+const YEARS: Record<BotInterval, number[]> = { '1h': [0.5, 1, 2, 3], '4h': [1, 2, 3, 5, 6], '1d': [2, 3, 5, 6] };
 
-type NumKey = 'left' | 'right' | 'slBufferPct' | 'tpR' | 'trendEma' | 'riskPct' | 'maxLeverage' | 'feePct';
+type NumKey = 'left' | 'right' | 'slBufferPct' | 'tpR' | 'trendEma' | 'riskPct' | 'maxLeverage' | 'feePct' | 'athDrawdownPct';
 const NUMS: { key: NumKey; label: string; min: number; max: number; step: number; title: string }[] = [
   { key: 'left', label: 'Bottom: bars left', min: 1, max: 100, step: 1, title: 'The bottom must be lower than this many bars before it' },
   { key: 'right', label: 'Bottom: bars right', min: 1, max: 50, step: 1, title: 'This many bars must close without a lower low. This is also how late the entry is.' },
@@ -20,6 +21,7 @@ const NUMS: { key: NumKey; label: string; min: number; max: number; step: number
   { key: 'riskPct', label: 'Risk per trade %', min: 0.1, max: 20, step: 0.1, title: 'Equity lost if the initial stop is hit' },
   { key: 'maxLeverage', label: 'Max leverage', min: 1, max: 125, step: 1, title: 'Caps position size when the stop is very close' },
   { key: 'feePct', label: 'Fee per side %', min: 0, max: 1, step: 0.01, title: 'Binance COIN-M taker fee is 0.05% (VIP 0)' },
+  { key: 'athDrawdownPct', label: 'Only when below ATH by %', min: 0, max: 95, step: 5, title: 'Bear-market filter: open trades only while price is at least this far under its all-time high. 0 = always.' },
   { key: 'trendEma', label: 'Trend filter EMA', min: 0, max: 500, step: 10, title: 'Only buy bottoms while price closes above this EMA. 0 = off.' },
 ];
 
@@ -40,7 +42,7 @@ export class BotPanel {
     const years = YEARS[st.interval].map((y) => `<option value="${y}"${y === st.years ? ' selected' : ''}>${y < 1 ? `${y * 12} months` : `${y} year${y > 1 ? 's' : ''}`}</option>`).join('');
     this.el.innerHTML = `
       <h3>Bottom bot · backtest</h3>
-      <p class="sub">Binance COIN-M BTCUSD_PERP, long only. Buys when a bottom is confirmed; stop a bit under that bottom.</p>
+      <p class="sub">Binance COIN-M BTCUSD_PERP, long only. Buys when a bottom is confirmed; stop a bit under that bottom. Active only while price is deep under its all-time high.</p>
       <div class="bp-grid">
         <label>Timeframe<select id="b-interval">${(['1h', '4h', '1d'] as BotInterval[]).map((i) => `<option${i === st.interval ? ' selected' : ''}>${i}</option>`).join('')}</select></label>
         <label>History<select id="b-years">${years}</select></label>
@@ -53,14 +55,15 @@ export class BotPanel {
         <span><i style="background:${C.draw}"></i>bottom taken</span><span><i style="background:${C.muted}"></i>bottom skipped</span>
         <span><b style="color:${C.s1}">▲</b> long</span><span><b style="color:${C.s7}">▲</b> re-entry</span>
         <span><b style="color:${C.up}">▼</b>/<b style="color:${C.down}">▼</b> exit, R</span>
-        <span><em style="border-color:${C.down}"></em>stop</span><span><em style="border-color:${C.up}"></em>target</span>
+        <span><em style="border-color:${C.down}"></em>stop</span><span><em style="border-color:${C.up}"></em>target</span><span><em style="border-color:${C.s4}"></em>active below</span>
       </div>
       <button id="b-reset" class="mp-btn secondary">Reset to defaults</button>
       <dl class="stats" id="b-stats"><dt>Loading…</dt><dd></dd></dl>
       <div class="bp-trades-head"><b>Trades</b><span class="muted" id="b-count"></span></div>
       <div class="bp-trades" id="b-trades"></div>
       <p class="note"><b>Rules.</b> A bottom is a bar whose low is below the previous <i>left</i> bars and is not undercut by the next <i>right</i> bars.
-        The order fills at the next bar's open. While in a trade, each new higher bottom raises the stop to just under it.
+        The order fills at the next bar's open. New trades (and re-entries) only open while the close is at least the set % below the all-time high
+        (Binance daily since 2020 plus Yahoo BTC history since 2012, only up to that bar); open trades are still managed normally. While in a trade, each new higher bottom raises the stop to just under it.
         After a stop-out, a close back above the stop level re-opens the long, with the stop under the lowest low since the stop-out. Size = risk % ÷ distance to stop, in whole $100 contracts. If a bar touches both stop and target, the stop counts.
         A bar that opens through the stop fills at the open. Equity and PnL are in BTC (COIN-M is BTC-margined); liquidation and slippage are not modelled.
         Past results don't predict future ones.</p>`;
@@ -154,6 +157,7 @@ export function buildBotSpec(bars: Bar[], r: BacktestResult, st: BotSettings, sc
     { id: 'main', kind: 'candle', title: `BTCUSD_PERP ${st.interval}`, data: bars, main: true, precision: 1, markers },
     { id: 'stop', kind: 'line', title: 'Stop', data: r.stops.map(ws), color: C.down, lineWidth: 1, dashed: true, steps: true, precision: 1, lastValueVisible: false },
     { id: 'target', kind: 'line', title: 'Target', data: r.targets.map(ws), color: C.up, lineWidth: 1, dashed: true, steps: true, precision: 1, lastValueVisible: false },
+    ...(r.zone.length ? [{ id: 'zone', kind: 'line' as const, title: `Active below (ATH −${st.athDrawdownPct}%)`, data: r.zone, color: C.s4, lineWidth: 1 as const, dashed: true, steps: true, precision: 0, lastValueVisible: false }] : []),
     { id: 'equity', kind: 'line', title: 'Equity (BTC)', data: r.equity, color: C.s7, lineWidth: 2, pane: 1, precision: 4 },
   ];
   return {

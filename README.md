@@ -75,6 +75,9 @@ contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). L
 - **Trail**: each new higher bottom while in a trade raises the stop to just under it.
 - **Re-entry**: after a stop-out, a close back above the stop level re-opens the long,
   with the stop under the lowest low since the stop-out.
+- **Bear-market filter**: new trades and re-entries only open while the close is at least
+  50% (settable) below the all-time high known at that bar: Binance daily highs since 2020 plus
+  Yahoo BTC history since 2012. Trades already open are still managed and exited.
 - Fees per side and real funding payments are charged. If one bar touches both stop and
   target the stop wins; a bar that opens through the stop fills at its open. Slippage and
   liquidation aren't modelled.

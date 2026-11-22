@@ -28,6 +28,8 @@ export interface BotParams {
   trail: boolean;
   /** Only take bottoms while the close is above the EMA of this length; 0 = off. */
   trendEma: number;
+  /** Only open trades while price is at least this % below its all-time high; 0 = off. */
+  athDrawdownPct: number;
   /** % of equity lost if the stop is hit (before fees and slippage). */
   riskPct: number;
   /** Position notional is capped at this multiple of equity. */
@@ -50,6 +52,7 @@ export const DEFAULT_BOT: BotParams = {
   tpR: 2,
   trail: true,
   trendEma: 0,
+  athDrawdownPct: 50,
   riskPct: 1,
   maxLeverage: 5,
   feePct: 0.05,
@@ -91,6 +94,8 @@ export interface BacktestResult {
   stops: { time: number; value: number }[];
   targets: { time: number; value: number }[];
   bottoms: { time: number; price: number; taken: boolean }[];
+  /** The bear-market trigger level (ATH × (1 − drawdown)) at each bar; empty when off. */
+  zone: { time: number; value: number }[];
   stats: BacktestStats;
 }
 
@@ -140,13 +145,37 @@ export function confirmedBottom(bars: Bar[], i: number, left: number, right: num
 const pnl = (contracts: number, entry: number, exit: number) => contracts * CONTRACT_USD * (1 / entry - 1 / exit);
 const notionalBtc = (contracts: number, price: number) => (contracts * CONTRACT_USD) / price;
 
-export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = [], startEquity = 1): BacktestResult {
+/**
+ * All-time high known at the close of each bar: the highest high of `history` (daily bars)
+ * from days that ended by this bar's open, and of `bars` up to and including this one.
+ */
+export function athSeries(bars: Bar[], history: Bar[] = []): number[] {
+  const out: number[] = [];
+  const hist = history.slice().sort((a, b) => a.time - b.time);
+  let h = 0, histMax = 0, runMax = 0;
+  for (const b of bars) {
+    while (h < hist.length && hist[h].time + 86400 <= b.time) histMax = Math.max(histMax, hist[h++].high);
+    runMax = Math.max(runMax, b.high);
+    out.push(Math.max(histMax, runMax));
+  }
+  return out;
+}
+
+/**
+ * @param ath all-time high known at each bar's close (see athSeries). Defaults to the
+ *            running high of `bars` alone, which understates it if the data starts late.
+ */
+export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = [], startEquity = 1, ath?: number[]): BacktestResult {
   const trades: Trade[] = [];
   const equityCurve: BacktestResult['equity'] = [];
   const stops: BacktestResult['stops'] = [];
   const targets: BacktestResult['targets'] = [];
   const bottoms: BacktestResult['bottoms'] = [];
   const trend = p.trendEma > 0 ? ema(bars.map((b) => b.close), p.trendEma) : null;
+  const athAt = ath ?? athSeries(bars);
+  const zoneLevel = (i: number) => athAt[i] * (1 - p.athDrawdownPct / 100);
+  const inZone = (i: number) => p.athDrawdownPct <= 0 || bars[i].close <= zoneLevel(i);
+  const zone: BacktestResult['zone'] = p.athDrawdownPct > 0 ? bars.map((b, i) => ({ time: b.time, value: zoneLevel(i) })) : [];
   const buf = 1 - p.slBufferPct / 100;
   const fee = p.feePct / 100;
   const barSec = bars.length > 1 ? bars[1].time - bars[0].time : 86400;
@@ -236,7 +265,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
       let taken = false;
       if (pos) {
         if (p.trail && stop > pos.stop && stop < b.close) pos.stop = stop;
-      } else if (trendOk && i < bars.length - 1) {
+      } else if (trendOk && inZone(i) && i < bars.length - 1) {
         pending = { stop, bottom, bottomTime: bars[k].time, reentry: false };
         rearm = null; // a fresh bottom replaces the re-entry setup
         taken = true;
@@ -247,7 +276,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
     // 5) Re-entry: price reclaimed the level where we were stopped out.
     if (rearm && !pos && !pending) {
       if (b.low < rearm.low) { rearm.low = b.low; rearm.lowTime = b.time; }
-      if (b.close > rearm.level && i < bars.length - 1) {
+      if (b.close > rearm.level && inZone(i) && i < bars.length - 1) {
         pending = { stop: rearm.low * buf, bottom: rearm.low, bottomTime: rearm.lowTime, reentry: true };
         rearm = null;
       }
@@ -271,7 +300,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
     });
   }
 
-  return { trades, equity: equityCurve, stops, targets, bottoms, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
+  return { trades, equity: equityCurve, stops, targets, bottoms, zone, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
 }
 
 function stats(bars: Bar[], trades: Trade[], eq: { value: number }[], start: number, barsIn: number): BacktestStats {

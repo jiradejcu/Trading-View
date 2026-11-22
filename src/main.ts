@@ -8,7 +8,7 @@ import {
 import type { SourceKind, Timeframe } from './lib/types';
 import { fmtDate } from './lib/time';
 import { BotPanel, DEFAULT_BOT_SETTINGS, buildBotSpec, type BotSettings } from './ui/botPanel';
-import { backtest, type BacktestResult } from './bot/bottomBot';
+import { athSeries, backtest, type BacktestResult } from './bot/bottomBot';
 import { loadBotData } from './data/binance';
 import type { Bar } from './lib/types';
 
@@ -45,7 +45,12 @@ const defaults: ViewState = {
 const st: ViewState = load(STORE_KEY, defaults);
 if (!SYMBOLS.some((s) => s.id === st.symbol)) st.symbol = defaults.symbol;
 st.lag.dynamic ??= true; // dynamic leads are the default
-st.bot = { ...DEFAULT_BOT_SETTINGS, ...st.bot };
+{
+  const saved = st.bot as Partial<BotSettings> | undefined;
+  st.bot = { ...DEFAULT_BOT_SETTINGS, ...saved };
+  // Settings saved before the bear-market filter existed get its longer default history too.
+  if (saved && saved.athDrawdownPct === undefined) st.bot.years = DEFAULT_BOT_SETTINGS.years;
+}
 const drawings: Record<string, Drawing[]> = load(DRAW_KEY, {});
 
 // ---- Views --------------------------------------------------------------------
@@ -77,7 +82,7 @@ let uni: Universe | null = null;
 const botPanel = new BotPanel($('#bot-panel'), (s: BotSettings) => { st.bot = s; scheduleRender(); });
 botPanel.onFocusTrade = (t) => view.focusRange(t.entryTime, t.exitTime);
 let bot: { key: string; bars: Bar[]; result: BacktestResult } | null = null;
-let botData: { key: string; bars: Bar[]; funding: Awaited<ReturnType<typeof loadBotData>>['funding'] } | null = null;
+let botData: (Awaited<ReturnType<typeof loadBotData>> & { key: string; ath: number[] }) | null = null;
 let botLoading = '';
 let botError = '';
 
@@ -89,14 +94,20 @@ function currentBacktest() {
       botLoading = dataKey;
       botError = '';
       loadBotData(st.bot.interval, st.bot.years)
-        .then((d) => { if (botLoading === dataKey) { botData = { key: dataKey, ...d }; botLoading = ''; } })
+        .then((d) => {
+          if (botLoading !== dataKey) return;
+          // ATH from Yahoo's BTC history (back to 2012, unless it's demo data) plus Binance daily since 2020.
+          const yahoo = uni && uni.source('BTCUSD') !== 'demo' ? uni.bars('BTCUSD') ?? [] : [];
+          botData = { key: dataKey, ...d, ath: athSeries(d.bars, [...yahoo, ...d.daily]) };
+          botLoading = '';
+        })
         .catch((e: Error) => { if (botLoading === dataKey) { botError = e.message; botLoading = ''; } })
         .finally(scheduleRender);
     }
     return null;
   }
   const key = JSON.stringify(st.bot);
-  if (bot?.key !== key) bot = { key, bars: botData.bars, result: backtest(botData.bars, st.bot, botData.funding) };
+  if (bot?.key !== key) bot = { key, bars: botData.bars, result: backtest(botData.bars, st.bot, botData.funding, 1, botData.ath) };
   return bot;
 }
 
