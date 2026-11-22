@@ -71,15 +71,15 @@ contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). L
 - **Bottom**: a bar whose low is below the previous *left* bars and isn't undercut by the
   next *right* bars. It's known at the close of the *right*-th bar; the long fills at the next open.
 - **Stop**: *buffer %* below the bottom's low. Size = *risk %* of equity ÷ distance to the stop,
-  in whole contracts, capped by *max leverage*. Optional take profit at *N R*.
-- **Trail**: each new higher bottom while in a trade raises the stop to just under it.
+  in whole contracts, capped by *max leverage*.
+- **Exit**: no take profit. The trade closes only at the stop, which trails up to just
+  under each new higher bottom.
 - **Re-entry**: after a stop-out, a close back above the stop level re-opens the long,
   with the stop under the lowest low since the stop-out.
 - **Bear-market filter**: new trades and re-entries only open while the close is at least
   50% (settable) below the all-time high known at that bar: Binance daily highs since 2020 plus
   Yahoo BTC history since 2012. Trades already open are still managed and exited.
-- Fees per side and real funding payments are charged. If one bar touches both stop and
-  target the stop wins; a bar that opens through the stop fills at its open. Slippage and
+- Fees per side and real funding payments are charged. A bar that opens through the stop fills at its open. Slippage and
   liquidation aren't modelled.
 
 This is a backtest only; it places no orders.

@@ -9,6 +9,9 @@ import type { Bar } from '../lib/types';
  * signal fires at the close of bar p+right and the order fills at the next bar's open.
  * Nothing here looks at a bar before it has closed.
  *
+ * There is no take profit: the only exit is the stop, which trails up to just under
+ * each new, higher confirmed bottom.
+ *
  * COIN-M contracts are inverse: each contract is worth $100, margin and PnL are in BTC.
  *   PnL (BTC) = contracts × 100 × (1/entry − 1/exit)
  */
@@ -22,10 +25,6 @@ export interface BotParams {
   right: number;
   /** Stop goes this % below the bottom's low. */
   slBufferPct: number;
-  /** Take profit at this multiple of the initial risk; 0 = no fixed target. */
-  tpR: number;
-  /** Raise the stop to each new, higher confirmed bottom (minus the buffer). */
-  trail: boolean;
   /** Only take bottoms while the close is above the EMA of this length; 0 = off. */
   trendEma: number;
   /** Only open trades while price is at least this % below its all-time high; 0 = off. */
@@ -49,8 +48,6 @@ export const DEFAULT_BOT: BotParams = {
   left: 10,
   right: 3,
   slBufferPct: 0.5,
-  tpR: 2,
-  trail: true,
   trendEma: 0,
   athDrawdownPct: 50,
   riskPct: 1,
@@ -62,7 +59,7 @@ export const DEFAULT_BOT: BotParams = {
 
 export interface FundingEvent { time: number; rate: number; markPrice: number }
 
-export type ExitReason = 'Stop' | 'Trail stop' | 'Target' | 'Open';
+export type ExitReason = 'Stop' | 'Trail stop' | 'Open';
 
 export interface Trade {
   /** Opened by the re-entry rule rather than a fresh bottom. */
@@ -72,7 +69,6 @@ export interface Trade {
   entryTime: number;
   entryPrice: number;
   initialStop: number;
-  target: number | null;
   contracts: number;
   exitTime: number;
   exitPrice: number;
@@ -90,9 +86,8 @@ export interface BacktestResult {
   trades: Trade[];
   /** Mark-to-market equity at each bar close, BTC. */
   equity: { time: number; value: number }[];
-  /** Active stop / target per bar while in a trade (NaN when flat). */
+  /** Active stop per bar while in a trade (NaN when flat). */
   stops: { time: number; value: number }[];
-  targets: { time: number; value: number }[];
   bottoms: { time: number; price: number; taken: boolean }[];
   /** The bear-market trigger level (ATH × (1 − drawdown)) at each bar; empty when off. */
   zone: { time: number; value: number }[];
@@ -169,7 +164,6 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
   const trades: Trade[] = [];
   const equityCurve: BacktestResult['equity'] = [];
   const stops: BacktestResult['stops'] = [];
-  const targets: BacktestResult['targets'] = [];
   const bottoms: BacktestResult['bottoms'] = [];
   const trend = p.trendEma > 0 ? ema(bars.map((b) => b.close), p.trendEma) : null;
   const athAt = ath ?? athSeries(bars);
@@ -185,7 +179,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
   /** Armed after a stop-out: re-enter if price closes back above `level`. */
   let rearm: { level: number; low: number; lowTime: number } | null = null;
   let pos: {
-    entryTime: number; entry: number; stop: number; initialStop: number; target: number | null; contracts: number;
+    entryTime: number; entry: number; stop: number; initialStop: number; contracts: number;
     bottom: number; bottomTime: number; risk: number; fees: number; funding: number; reentry: boolean;
   } | null = null;
   let fi = 0;
@@ -199,7 +193,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
     const net = gross - c.fees - exitFee + c.funding;
     trades.push({
       reentry: c.reentry, bottomTime: c.bottomTime, bottomPrice: c.bottom, entryTime: c.entryTime, entryPrice: c.entry,
-      initialStop: c.initialStop, target: c.target, contracts: c.contracts, exitTime: time, exitPrice: price, reason,
+      initialStop: c.initialStop, contracts: c.contracts, exitTime: time, exitPrice: price, reason,
       pnlBtc: net, r: net / c.risk, feesBtc: c.fees + exitFee, fundingBtc: c.funding, equityAfter: equity,
     });
     pos = null;
@@ -222,7 +216,6 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
           equity -= entryFee;
           pos = {
             entryTime: b.time, entry, stop, initialStop: stop,
-            target: p.tpR > 0 ? entry + p.tpR * (entry - stop) : null,
             contracts, bottom: pending.bottom, bottomTime: pending.bottomTime,
             risk: contracts * lossPerContract, fees: entryFee, funding: 0, reentry: pending.reentry,
           };
@@ -244,15 +237,13 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
       fi++;
     }
 
-    // 3) Stop / target inside the bar. If both could have hit, assume the stop did.
+    // 3) Stop inside the bar (the only exit).
     if (pos) {
       barsIn++;
       if (b.low <= pos.stop) {
         const level: number = pos.stop;
         close(b.time, Math.min(b.open, level), level > pos.initialStop ? 'Trail stop' : 'Stop');
         if (p.reentry) rearm = { level, low: b.low, lowTime: b.time };
-      } else if (pos.target != null && b.high >= pos.target) {
-        close(b.time, Math.max(b.open, pos.target), 'Target');
       }
     }
 
@@ -264,7 +255,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
       const trendOk = !trend || (Number.isFinite(trend[i]) && b.close > trend[i]);
       let taken = false;
       if (pos) {
-        if (p.trail && stop > pos.stop && stop < b.close) pos.stop = stop;
+        if (stop > pos.stop && stop < b.close) pos.stop = stop; // trail up to the higher low
       } else if (trendOk && inZone(i) && i < bars.length - 1) {
         pending = { stop, bottom, bottomTime: bars[k].time, reentry: false };
         rearm = null; // a fresh bottom replaces the re-entry setup
@@ -285,7 +276,6 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
     const mtm = pos ? equity + pnl(pos.contracts, pos.entry, b.close) : equity;
     equityCurve.push({ time: b.time, value: mtm });
     stops.push({ time: b.time, value: pos ? pos.stop : NaN });
-    targets.push({ time: b.time, value: pos?.target ?? NaN });
   }
 
   if (pos) {
@@ -294,13 +284,13 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
     const net = pnl(c.contracts, c.entry, last.close) - c.fees + c.funding;
     trades.push({
       reentry: c.reentry, bottomTime: c.bottomTime, bottomPrice: c.bottom, entryTime: c.entryTime, entryPrice: c.entry,
-      initialStop: c.initialStop, target: c.target, contracts: c.contracts, exitTime: last.time, exitPrice: last.close,
+      initialStop: c.initialStop, contracts: c.contracts, exitTime: last.time, exitPrice: last.close,
       reason: 'Open', pnlBtc: net, r: net / c.risk, feesBtc: c.fees, fundingBtc: c.funding,
       equityAfter: equityCurve[equityCurve.length - 1]?.value ?? equity,
     });
   }
 
-  return { trades, equity: equityCurve, stops, targets, bottoms, zone, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
+  return { trades, equity: equityCurve, stops, bottoms, zone, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
 }
 
 function stats(bars: Bar[], trades: Trade[], eq: { value: number }[], start: number, barsIn: number): BacktestStats {

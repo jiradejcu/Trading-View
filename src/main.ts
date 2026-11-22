@@ -48,6 +48,8 @@ st.lag.dynamic ??= true; // dynamic leads are the default
 {
   const saved = st.bot as Partial<BotSettings> | undefined;
   st.bot = { ...DEFAULT_BOT_SETTINGS, ...saved };
+  // Removed settings (take profit, trail on/off) from older saves.
+  for (const k of ['tpR', 'trail']) delete (st.bot as unknown as Record<string, unknown>)[k];
   // Settings saved before the bear-market filter existed get its longer default history too.
   if (saved && saved.athDrawdownPct === undefined) st.bot.years = DEFAULT_BOT_SETTINGS.years;
 }
