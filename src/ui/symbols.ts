@@ -185,7 +185,6 @@ function buildModelSpec(u: Universe, st: ViewState): ChartSpec {
   series.push({
     id: 'comp', kind: 'line', title: `Composite (${Math.round(st.lag.wGli * 100)}% GLI +${st.lag.lagGli}w / ${Math.round((1 - st.lag.wGli) * 100)}% inv MOVE +${st.lag.lagMove}w)`,
     data: pts(m.composite), color: C.s2, lineWidth: 3, main: true,
-    markers: projWeeks ? [{ time: m.lastBtcTime, text: `now · ${projWeeks}w ahead` }] : undefined,
   });
   if (st.showComponents) {
     series.push(
@@ -211,6 +210,7 @@ function buildModelSpec(u: Universe, st: ViewState): ChartSpec {
     series,
     scaleMode: 'normal',
     defaultYears: 3,
+    forecast: projWeeks ? { from: m.lastBtcTime, weeks: projWeeks } : undefined,
     paneStretch: st.btcAsPrice ? { 1: 0.45, 2: 0.2 } : { 1: 0.2 },
     horzLines: [{ pane: 0, value: 0 }, { pane: corrPane, value: 0 }],
     logPanes: st.btcAsPrice ? [1] : [],

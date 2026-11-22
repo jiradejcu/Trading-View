@@ -41,6 +41,8 @@ export interface ChartSpec {
   horzLines?: { pane: number; value: number }[];
   /** Extra panes whose right scale is logarithmic. */
   logPanes?: number[];
+  /** Shade everything after `from` as a projection, with a "Today" line at `from`. */
+  forecast?: { from: number; weeks: number };
 }
 
 export type Drawing =
@@ -67,6 +69,7 @@ export class ChartView {
   private pending: { t: number; p: number } | null = null;
   private hover: { t: number; p: number } | null = null;
   private raf = 0;
+  private forecast: ChartSpec['forecast'] = undefined;
 
   tool: Tool = 'cursor';
   drawings: Drawing[] = [];
@@ -82,6 +85,7 @@ export class ChartView {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.pending) { this.pending = null; this.requestDraw(); }
     });
+    new ResizeObserver(() => this.requestDraw()).observe(el);
   }
 
   render(spec: ChartSpec) {
@@ -91,6 +95,7 @@ export class ChartView {
     this.apis = [];
     this.priceLines = [];
     this.pending = null;
+    this.forecast = spec.forecast;
 
     const chart = createChart(this.el, {
       autoSize: true,
@@ -164,6 +169,7 @@ export class ChartView {
     else this.setRangeYears(spec.defaultYears ?? 1);
 
     chart.subscribeCrosshairMove((p) => this.onCrosshair(p));
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => this.requestDraw());
     this.renderLegend(null);
     this.syncPriceLines();
     this.requestDraw();
@@ -321,6 +327,7 @@ export class ChartView {
       const y = this.main!.api.priceToCoordinate(pt.p);
       return x == null || y == null ? null : [x + xOff, y] as const;
     };
+    if (this.forecast) this.drawForecast(ctx, xOff, ts.width(), h - ts.height(), paneH);
     ctx.save();
     ctx.beginPath();
     ctx.rect(xOff, 0, ts.width(), paneH);
@@ -340,6 +347,31 @@ export class ChartView {
       const A = toXY(this.pending);
       if (A) { ctx.beginPath(); ctx.arc(A[0], A[1], 4, 0, Math.PI * 2); ctx.fill(); }
     }
+    ctx.restore();
+  }
+
+  /** "Today" line plus a shaded zone for the part of the chart that is a projection. */
+  private drawForecast(ctx: CanvasRenderingContext2D, xOff: number, plotW: number, plotH: number, paneH: number) {
+    const f = this.forecast!;
+    const lx = this.chart!.timeScale().logicalToCoordinate(this.timeToLogical(f.from) as never);
+    if (lx == null) return;
+    const x = lx + xOff, right = xOff + plotW;
+    if (x > right) return;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(xOff, 0, plotW, plotH); ctx.clip();
+    ctx.fillStyle = 'rgba(41, 98, 255, 0.07)';
+    ctx.fillRect(Math.max(x, xOff), 0, right - Math.max(x, xOff), plotH);
+    ctx.strokeStyle = C.muted; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, plotH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
+    ctx.textBaseline = 'bottom';
+    // Labels sit at the bottom of the main pane, clear of the legend and lower panes.
+    const y = paneH - 6;
+    ctx.fillStyle = C.text; ctx.textAlign = 'right'; ctx.fillText('Today', x - 5, y);
+    const room = right - x - 10;
+    const label = [`Forecast ${f.weeks} wk →`, `+${f.weeks} wk →`].find((t) => ctx.measureText(t).width <= room);
+    if (label) { ctx.fillStyle = C.s2; ctx.textAlign = 'left'; ctx.fillText(label, x + 5, y); }
     ctx.restore();
   }
 }
