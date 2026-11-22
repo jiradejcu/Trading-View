@@ -36,7 +36,7 @@
           <option value="area">Area</option>
         </select>
         <span class="sep"></span>
-        <button id="ind-btn" class="tb-btn" title="Indicators">ƒx Indicators</button>
+        <button id="ind-btn" class="tb-btn" title="Indicators">ƒx<span class="wide-only"> Indicators</span></button>
         <span class="spacer"></span>
         <span id="source-badge" class="badge"></span>
         <button id="watch-toggle" class="tb-btn only-narrow" title="Watchlist">☰</button>
@@ -60,7 +60,7 @@
 
       <main class="chart-area">
         <div class="chart-head">
-          <div class="ch-title"><span id="ch-name"></span><span id="ch-desc" class="muted"></span></div>
+          <div class="ch-title"><span id="ch-name"></span><button id="legend-toggle" class="lg-toggle" aria-controls="legend" aria-expanded="true" title="Hide legend">▾</button><span id="ch-desc" class="muted"></span></div>
           <div class="ch-price"><span id="ch-last"></span><span id="ch-change"></span></div>
           <div id="legend" class="legend"></div>
         </div>

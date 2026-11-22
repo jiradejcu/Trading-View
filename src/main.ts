@@ -42,6 +42,23 @@ const drawings: Record<string, Drawing[]> = load(DRAW_KEY, {});
 
 // ---- Views --------------------------------------------------------------------
 const view = new ChartView($('#chart'), $('#legend'));
+
+// ---- Collapsible legend (remembered per viewer) -----------------------------
+const LEGEND_KEY = 'lagline:legend:v1';
+const legendPref = load(LEGEND_KEY, { collapsed: false });
+function applyLegend() {
+  const btn = $<HTMLButtonElement>('#legend-toggle');
+  $('#legend').hidden = legendPref.collapsed;
+  btn.textContent = legendPref.collapsed ? '▸' : '▾';
+  btn.setAttribute('aria-expanded', String(!legendPref.collapsed));
+  btn.title = legendPref.collapsed ? 'Show legend' : 'Hide legend';
+}
+$('#legend-toggle').addEventListener('click', () => {
+  legendPref.collapsed = !legendPref.collapsed;
+  save(LEGEND_KEY, legendPref);
+  applyLegend();
+});
+applyLegend();
 const panel = new ModelPanel($('#model-panel'), (patch: Partial<ModelPanelState>) => {
   Object.assign(st, patch);
   scheduleRender();
@@ -73,9 +90,12 @@ function render() {
   const last = view.lastMainValue();
   if (isModel) {
     const m = uni.model(st.lag);
-    $('#ch-last').textContent = `r ${Number.isFinite(m.rComposite) ? m.rComposite.toFixed(2) : '–'}`;
-    $('#ch-change').innerHTML = `<span class="muted">composite vs BTC · latest BTC week ${fmtDate(m.lastBtcTime)}</span>`;
+    const ch = $('#ch-last');
+    ch.innerHTML = `<span class="ch-label">corr</span> ${Number.isFinite(m.rComposite) ? m.rComposite.toFixed(2) : '–'}`;
+    ch.title = 'Correlation between the composite (liquidity + inverse MOVE, shifted by the leads) and BTC. 1 = move together, 0 = unrelated, −1 = opposite.';
+    $('#ch-change').innerHTML = `<span class="muted">composite vs BTC<span class="wide-only"> · latest BTC week ${fmtDate(m.lastBtcTime)}</span></span>`;
   } else if (last) {
+    $('#ch-last').title = '';
     const ch = last.value - last.prev, pct = (ch / last.prev) * 100;
     $('#ch-last').textContent = fmtNum(last.value, def.precision);
     $('#ch-change').innerHTML = `<span class="${ch >= 0 ? 'up' : 'down'}">${ch >= 0 ? '+' : ''}${fmtNum(ch, def.precision)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
@@ -91,7 +111,9 @@ function render() {
   ct.disabled = def.kind !== 'ohlc';
   $<HTMLButtonElement>('#compare-btn').disabled = isModel;
   $<HTMLButtonElement>('#ind-btn').disabled = isModel;
-  $('#compare-btn').textContent = st.compare && !isModel ? `＋ vs ${symbolDef(st.compare).name} ✕` : '＋ Compare';
+  $('#compare-btn').innerHTML = st.compare && !isModel
+    ? `＋<span class="wide-only"> vs</span> ${symbolDef(st.compare).name} ✕`
+    : '＋<span class="wide-only"> Compare</span>';
   document.querySelectorAll<HTMLButtonElement>('#scale-group button').forEach((b) => {
     b.disabled = isModel;
     b.classList.toggle('active', !isModel && b.dataset.scale === (st.compare ? 'percent' : st.scale));
@@ -128,7 +150,7 @@ function renderWatchlist() {
     let last = '–', chg = '', cls = '';
     if (s.kind === 'model') {
       const r = uni!.model(st.lag).rComposite;
-      last = Number.isFinite(r) ? `r ${r.toFixed(2)}` : '–';
+      last = Number.isFinite(r) ? `corr ${r.toFixed(2)}` : '–';
     } else {
       const p = uni!.points(s.id);
       if (p.length > 1) {

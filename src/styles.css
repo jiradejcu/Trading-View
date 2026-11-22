@@ -66,12 +66,18 @@ button { cursor: pointer; }
 .chart-head { position: absolute; z-index: 3; left: 10px; top: 6px; right: 80px; pointer-events: none; }
 .ch-title { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 #ch-name { font-size: 15px; font-weight: 600; color: var(--text-strong); }
-.ch-price { display: flex; gap: 8px; align-items: baseline; margin-top: 2px; }
+.ch-price { display: flex; gap: 8px; align-items: baseline; margin-top: 2px; white-space: nowrap; min-width: 0; }
+#ch-change { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ch-label { font-size: 12px; font-weight: 400; color: var(--muted); margin-right: 2px; }
 #ch-last { font-size: 18px; font-weight: 600; color: var(--text-strong); font-variant-numeric: tabular-nums; }
 .legend { margin-top: 4px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .lg-row { display: flex; gap: 6px; align-items: center; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lg-row .sw { width: 10px; height: 3px; border-radius: 2px; flex: none; }
 .lg-title { color: var(--text); }
+.lg-toggle { pointer-events: auto; background: transparent; border: 0; border-radius: 4px; color: var(--muted);
+  font-size: 12px; line-height: 1; padding: 3px 6px; margin-left: -4px; align-self: center; }
+.lg-toggle:hover { background: var(--panel-2); color: var(--text-strong); }
+.legend[hidden] { display: none; }
 .chart { position: relative; flex: 1; min-height: 0; }
 .chart.drawing { cursor: crosshair; }
 .draw-layer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
@@ -153,4 +159,10 @@ button { cursor: pointer; }
   .sidebar.open { transform: none; }
   .chart-head { right: 60px; }
   #ch-desc { display: none; }
+  /* Compact top bar: short labels, and the ☰ panel button always reachable. */
+  .wide-only { display: none; }
+  .brand, .topbar .sep { display: none; }
+  .topbar { gap: 2px; padding: 0 4px; }
+  .tb-btn, .tb-select, .seg button { padding: 6px; }
+  #watch-toggle { position: sticky; right: 0; background: var(--bg); box-shadow: -8px 0 8px var(--bg); font-size: 16px; }
 }
