@@ -213,7 +213,7 @@ function buildModelSpec(u: Universe, st: ViewState): ChartSpec {
     corrPane = 2;
   }
   series.push({
-    id: 'corr', kind: 'histogram', title: `26w rolling correlation (${shown[0].name} vs BTC)`, pane: corrPane, precision: 2, color: C.up,
+    id: 'corr', kind: 'histogram', title: '6M rolling corr', pane: corrPane, precision: 2, color: C.up,
     data: (shown[0].id === 'comp' ? m.rollingCorr : rollingCorrelation(shown[0].data, m.btcNorm, 26)).map((p) => ({ time: p.time, value: p.value, color: p.value >= 0 ? `${C.up}aa` : `${C.down}aa` })),
   });
 
