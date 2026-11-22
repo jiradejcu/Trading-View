@@ -82,6 +82,10 @@ contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). L
 - Fees per side and real funding payments are charged. A bar that opens through the stop fills at its open. Slippage and
   liquidation aren't modelled.
 
+Defaults (4h, left 20, right 3, stop 0.5% under the bottom, no re-entry, ATH −50%) were
+picked by tuning on 2020–2023 and checking on 2024–2026, choosing the middle of the region that
+was profitable in both rather than the single best result.
+
 This is a backtest only; it places no orders.
 
 ## Layout

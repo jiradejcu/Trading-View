@@ -7,7 +7,7 @@ import {
 } from './ui/symbols';
 import type { SourceKind, Timeframe } from './lib/types';
 import { fmtDate } from './lib/time';
-import { BotPanel, DEFAULT_BOT_SETTINGS, buildBotSpec, type BotSettings } from './ui/botPanel';
+import { BOT_DEFAULTS_VERSION, BotPanel, DEFAULT_BOT_SETTINGS, buildBotSpec, type BotSettings } from './ui/botPanel';
 import { athSeries, backtest, type BacktestResult } from './bot/bottomBot';
 import { loadBotData } from './data/binance';
 import type { Bar } from './lib/types';
@@ -47,11 +47,8 @@ if (!SYMBOLS.some((s) => s.id === st.symbol)) st.symbol = defaults.symbol;
 st.lag.dynamic ??= true; // dynamic leads are the default
 {
   const saved = st.bot as Partial<BotSettings> | undefined;
-  st.bot = { ...DEFAULT_BOT_SETTINGS, ...saved };
-  // Removed settings (take profit, trail on/off) from older saves.
-  for (const k of ['tpR', 'trail']) delete (st.bot as unknown as Record<string, unknown>)[k];
-  // Settings saved before the bear-market filter existed get its longer default history too.
-  if (saved && saved.athDrawdownPct === undefined) st.bot.years = DEFAULT_BOT_SETTINGS.years;
+  // Settings saved under older defaults move to the current (optimized) ones once.
+  st.bot = saved?.v === BOT_DEFAULTS_VERSION ? { ...DEFAULT_BOT_SETTINGS, ...saved } : { ...DEFAULT_BOT_SETTINGS };
 }
 const drawings: Record<string, Drawing[]> = load(DRAW_KEY, {});
 

@@ -44,8 +44,13 @@ export interface BotParams {
   reentry: boolean;
 }
 
+/**
+ * Tuned on Binance 4h data from 2020–2023 and checked on 2024–2026 (unseen): the region
+ * left 10–30 / right 2–5 / buffer 0.5% / no re-entry was profitable in both halves;
+ * these are its middle. Finer tuning didn't carry over to the unseen period.
+ */
 export const DEFAULT_BOT: BotParams = {
-  left: 10,
+  left: 20,
   right: 3,
   slBufferPct: 0.5,
   trendEma: 0,
@@ -54,7 +59,7 @@ export const DEFAULT_BOT: BotParams = {
   maxLeverage: 5,
   feePct: 0.05,
   funding: true,
-  reentry: true,
+  reentry: false,
 };
 
 export interface FundingEvent { time: number; rate: number; markPrice: number }

@@ -5,10 +5,12 @@ import type { ChartSpec, SeriesSpec } from './chartView';
 import type { Bar } from '../lib/types';
 import { fmtDate } from '../lib/time';
 
-export interface BotSettings extends BotParams { interval: BotInterval; years: number }
+export interface BotSettings extends BotParams { interval: BotInterval; years: number; /** Defaults version the settings started from. */ v?: number }
+
+export const BOT_DEFAULTS_VERSION = 2;
 
 // 6 years reaches back to 2021, so the bear-market filter has more than one bear market to act on.
-export const DEFAULT_BOT_SETTINGS: BotSettings = { ...DEFAULT_BOT, interval: '4h', years: 6 };
+export const DEFAULT_BOT_SETTINGS: BotSettings = { ...DEFAULT_BOT, interval: '4h', years: 6, v: BOT_DEFAULTS_VERSION };
 
 const YEARS: Record<BotInterval, number[]> = { '1h': [0.5, 1, 2, 3], '4h': [1, 2, 3, 5, 6], '1d': [2, 3, 5, 6] };
 
