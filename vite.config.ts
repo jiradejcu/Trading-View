@@ -24,5 +24,6 @@ const proxy: Record<string, ProxyOptions> = {
 export default defineConfig({
   base: './',
   server: { proxy },
-  preview: { proxy },
+  // Self-hosted behind a Cloudflare tunnel (see README "Deployment").
+  preview: { proxy, allowedHosts: ['tradingview.vatanutanon.me'] },
 });
