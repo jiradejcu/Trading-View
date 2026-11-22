@@ -1,6 +1,6 @@
 {
   "name": "Trading View Craft",
-  "short_name": "Trading View",
+  "short_name": "TVC",
   "description": "TradingView-style charts with the LIQ·MOVE→BTC lag model.",
   "id": "./",
   "start_url": "./",
