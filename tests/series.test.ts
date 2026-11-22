@@ -61,3 +61,28 @@ describe('series', () => {
     expect(rsi(p, 14).every((x) => x.value === 100)).toBe(true);
   });
 });
+
+describe('dynamicShift', () => {
+  const W = 7 * 86400;
+  const wave = (n: number, f: (i: number) => number) => Array.from({ length: n }, (_, i) => ({ time: i * W, value: f(i) }));
+  it('recovers a known lead and projects past the last week', async () => {
+    const { dynamicShift } = await import('../src/lib/series');
+    const x = wave(300, (i) => Math.sin(i / 7) + 0.3 * Math.sin(i / 2.3));
+    const y = wave(290, (i) => (i >= 5 ? x[i - 5].value : 0)); // y follows x by 5 weeks
+    const d = dynamicShift(x, y, 26, 52);
+    expect(d.lagNow).toBe(5);
+    expect(d.lags.slice(10).every((p) => p.value === 5)).toBe(true);
+    const lastY = y[y.length - 1].time;
+    expect(d.points.filter((p) => p.time > lastY)).toHaveLength(5);
+  });
+  it('never uses data after the week it is computed for', async () => {
+    const { dynamicShift } = await import('../src/lib/series');
+    const x = wave(300, (i) => Math.sin(i / 5) + 0.2 * Math.cos(i / 1.7));
+    const y = wave(250, (i) => Math.sin((i - 8) / 5));
+    const full = dynamicShift(x, y, 26, 52);
+    const cut = dynamicShift(x, y.slice(0, 150), 26, 52);
+    // Lags chosen up to week 149 must not change when later y data is added.
+    const t149 = y[149].time;
+    expect(full.lags.filter((p) => p.time <= t149)).toEqual(cut.lags);
+  });
+});

@@ -156,6 +156,54 @@ export function bestLag(xc: LagCorr[]): LagCorr {
   return xc.reduce((best, c) => (Number.isFinite(c.r) && (!Number.isFinite(best.r) || c.r > best.r) ? c : best), xc[0]);
 }
 
+export interface DynamicShift {
+  /** x shifted by the lead chosen at each week; runs past y's last week by the latest lead. */
+  points: Point[];
+  /** Lead (weeks) chosen at each week of y. */
+  lags: Point[];
+  /** Lead in use at y's last week. */
+  lagNow: number;
+}
+
+/**
+ * Time-varying lead: at each week t of y, pick the lead L (0..maxLagWeeks) whose shifted x
+ * correlated best with y over the `window` weeks ending at t, and output x(t − L). Only data up
+ * to t is used, so there is no look-ahead. Weeks before a full window are left out.
+ */
+export function dynamicShift(x: Point[], y: Point[], maxLagWeeks: number, window: number): DynamicShift {
+  const xm = new Map(x.map((p) => [p.time, p.value]));
+  const ty = y.map((p) => p.time), vy = y.map((p) => p.value);
+  const points: Point[] = [], lags: Point[] = [];
+  let lagNow = NaN;
+  for (let i = window - 1; i < ty.length; i++) {
+    let best = NaN, bestR = -Infinity;
+    for (let L = 0; L <= maxLagWeeks; L++) {
+      const a: number[] = [], b: number[] = [];
+      for (let j = i - window + 1; j <= i; j++) {
+        const v = xm.get(ty[j] - L * WEEK);
+        if (v !== undefined) { a.push(v); b.push(vy[j]); }
+      }
+      if (a.length < window * 0.8) continue;
+      const r = pearson(a, b);
+      if (Number.isFinite(r) && r > bestR) { bestR = r; best = L; }
+    }
+    if (!Number.isFinite(best)) continue;
+    lags.push({ time: ty[i], value: best });
+    const v = xm.get(ty[i] - best * WEEK);
+    if (v !== undefined) points.push({ time: ty[i], value: v });
+    lagNow = best;
+  }
+  // Projection: past y's last week, keep the latest lead.
+  if (Number.isFinite(lagNow) && ty.length) {
+    const last = ty[ty.length - 1];
+    for (let k = 1; k <= lagNow; k++) {
+      const v = xm.get(last + (k - lagNow) * WEEK);
+      if (v !== undefined) points.push({ time: last + k * WEEK, value: v });
+    }
+  }
+  return { points, lags, lagNow };
+}
+
 export function rollingCorrelation(x: Point[], y: Point[], window: number): Point[] {
   const { t, a, b } = pairOnTime(x, y);
   const out: Point[] = [];

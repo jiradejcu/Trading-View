@@ -1,7 +1,7 @@
 import type { Bar, Point } from '../lib/types';
 import { WEEK, weekStart } from '../lib/time';
 import {
-  bestLag, closes, crossCorrelation, ffillOnGrid, logPoints, pairOnTime, pearson, rollingCorrelation,
+  bestLag, closes, crossCorrelation, dynamicShift, ffillOnGrid, logPoints, pairOnTime, pearson, rollingCorrelation,
   rollingZ, shift, toWeekly, weeklyGrid, yoy, zscore, type LagCorr,
 } from '../lib/series';
 import type { FredId } from '../data/sources';
@@ -89,6 +89,9 @@ export const NORM_LABEL: Record<Norm, string> = {
 
 export const ROLL_WINDOW_WEEKS = 104;
 export const MAX_LAG_WEEKS = 52;
+/** Dynamic lead: search 0..DYN_MAX_LAG weeks, scored on the trailing DYN_WINDOW weeks. */
+export const DYN_MAX_LAG = 26;
+export const DYN_WINDOW = 52;
 
 /** Put a weekly series in comparable z-units (log level for positive series). */
 export function normalize(weekly: Point[], norm: Norm): Point[] {
@@ -107,6 +110,8 @@ export interface LagParams {
   /** Weight of GLI in the composite, 0..1 (inverse MOVE gets the rest). */
   wGli: number;
   norm: Norm;
+  /** Pick each week's lead from the past year's best correlation instead of the fixed leads. */
+  dynamic?: boolean;
 }
 
 export interface LagModel {
@@ -122,6 +127,15 @@ export interface LagModel {
   bestMove: LagCorr;
   rComposite: number;
   nComposite: number;
+  /** Correlation with BTC of the (fixed or dynamic) shifted lines. */
+  rGli: number;
+  rMove: number;
+  /** Leads in use now, and (dynamic mode) the lead chosen each week. */
+  gliLagNow: number;
+  moveLagNow: number;
+  gliLags: Point[];
+  moveLags: Point[];
+  dynamic: boolean;
   /** Last week with a BTC close; composite points after this are a projection. */
   lastBtcTime: number;
 }
@@ -140,13 +154,21 @@ export function prepareLagInputs(gli: Point[], move: Bar[], btc: Bar[]): LagInpu
   };
 }
 
+function pairAB(x: Point[], y: Point[]): [number[], number[]] {
+  const { a, b } = pairOnTime(x, y);
+  return [a, b];
+}
+
 export function buildLagModel(inp: LagInputs, p: LagParams): LagModel {
   const gliN = normalize(inp.gliWeekly, p.norm);
   const moveN = normalize(inp.invMoveWeekly, p.norm);
   const btcNorm = normalize(inp.btcWeekly, p.norm);
 
-  const gliShifted = shift(gliN, p.lagGli * WEEK);
-  const moveShifted = shift(moveN, p.lagMove * WEEK);
+  const dyn = !!p.dynamic;
+  const dGli = dyn ? dynamicShift(gliN, btcNorm, DYN_MAX_LAG, DYN_WINDOW) : null;
+  const dMove = dyn ? dynamicShift(moveN, btcNorm, DYN_MAX_LAG, DYN_WINDOW) : null;
+  const gliShifted = dGli ? dGli.points : shift(gliN, p.lagGli * WEEK);
+  const moveShifted = dMove ? dMove.points : shift(moveN, p.lagMove * WEEK);
 
   const moveMap = new Map(moveShifted.map((pt) => [pt.time, pt.value]));
   const composite: Point[] = [];
@@ -172,6 +194,13 @@ export function buildLagModel(inp: LagInputs, p: LagParams): LagModel {
     bestMove: bestLag(xcMove),
     rComposite: pearson(a, b),
     nComposite: a.length,
+    rGli: dyn ? pearson(...pairAB(gliShifted, btcNorm)) : (xcGli[p.lagGli]?.r ?? NaN),
+    rMove: dyn ? pearson(...pairAB(moveShifted, btcNorm)) : (xcMove[p.lagMove]?.r ?? NaN),
+    gliLagNow: dGli ? dGli.lagNow : p.lagGli,
+    moveLagNow: dMove ? dMove.lagNow : p.lagMove,
+    gliLags: dGli?.lags ?? [],
+    moveLags: dMove?.lags ?? [],
+    dynamic: dyn,
     lastBtcTime: inp.btcWeekly.length ? weekStart(inp.btcWeekly[inp.btcWeekly.length - 1].time) : 0,
   };
 }

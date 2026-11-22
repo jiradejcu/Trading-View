@@ -182,11 +182,12 @@ export interface ModelLine { id: string; name: string; title: string; r: number;
 
 /** The model's three indicator lines, best correlation with BTC first. */
 export function rankModelLines(m: LagModel, lag: LagParams): ModelLine[] {
+  const dyn = m.dynamic ? ' dynamic' : '';
   const lines: ModelLine[] = [
-    { id: 'comp', name: 'Composite', title: `Composite (${Math.round(lag.wGli * 100)}% GLI +${lag.lagGli}w / ${Math.round((1 - lag.wGli) * 100)}% inv MOVE +${lag.lagMove}w)`,
+    { id: 'comp', name: 'Composite', title: `Composite (${Math.round(lag.wGli * 100)}% GLI +${m.gliLagNow}w / ${Math.round((1 - lag.wGli) * 100)}% inv MOVE +${m.moveLagNow}w${dyn})`,
       r: m.rComposite, data: m.composite, color: C.s2 },
-    { id: 'gli', name: `Global liquidity +${lag.lagGli}w`, title: `Global liquidity, +${lag.lagGli}w`, r: m.xcGli[lag.lagGli]?.r ?? NaN, data: m.gliShifted, color: C.s3 },
-    { id: 'move', name: `Inverse MOVE +${lag.lagMove}w`, title: `Inverse MOVE, +${lag.lagMove}w`, r: m.xcMove[lag.lagMove]?.r ?? NaN, data: m.moveShifted, color: C.s4 },
+    { id: 'gli', name: `Global liquidity +${m.gliLagNow}w`, title: `Global liquidity, +${m.gliLagNow}w${dyn}`, r: m.rGli, data: m.gliShifted, color: C.s3 },
+    { id: 'move', name: `Inverse MOVE +${m.moveLagNow}w`, title: `Inverse MOVE, +${m.moveLagNow}w${dyn}`, r: m.rMove, data: m.moveShifted, color: C.s4 },
   ];
   const key = (r: number) => (Number.isFinite(r) ? r : -Infinity);
   return lines.sort((a, b) => key(b.r) - key(a.r));
@@ -218,7 +219,7 @@ function buildModelSpec(u: Universe, st: ViewState): ChartSpec {
   });
 
   return {
-    key: `LAGMODEL|${st.lag.norm}|${st.btcAsPrice}`,
+    key: `LAGMODEL|${st.lag.norm}|${st.btcAsPrice}|${!!st.lag.dynamic}`,
     series,
     scaleMode: 'normal',
     defaultYears: 3,

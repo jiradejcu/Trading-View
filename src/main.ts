@@ -32,13 +32,14 @@ const defaults: ViewState = {
   scale: 'normal',
   indicators: ['vol'],
   compare: null,
-  lag: { lagGli: 12, lagMove: 6, wGli: 0.5, norm: 'rollz' },
+  lag: { lagGli: 12, lagMove: 6, wGli: 0.5, norm: 'rollz', dynamic: true },
   btcAsPrice: false,
   showComponents: true,
   showAllLines: false,
 };
 const st: ViewState = load(STORE_KEY, defaults);
 if (!SYMBOLS.some((s) => s.id === st.symbol)) st.symbol = defaults.symbol;
+st.lag.dynamic ??= true; // dynamic leads are the default
 const drawings: Record<string, Drawing[]> = load(DRAW_KEY, {});
 
 // ---- Views --------------------------------------------------------------------

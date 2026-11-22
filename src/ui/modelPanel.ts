@@ -1,5 +1,5 @@
 import type { LagModel, LagParams, Norm } from '../custom/liquidity';
-import { MAX_LAG_WEEKS, NORM_LABEL } from '../custom/liquidity';
+import { DYN_MAX_LAG, DYN_WINDOW, MAX_LAG_WEEKS, NORM_LABEL } from '../custom/liquidity';
 import type { LagCorr } from '../lib/series';
 import { C } from './theme';
 
@@ -21,6 +21,8 @@ export class ModelPanel {
     this.el.innerHTML = `
       <h3>Lag model</h3>
       <p class="sub">Inverse MOVE + global liquidity, shifted forward to lead Bitcoin</p>
+      <label class="mp-check" title="Each week, use the lead (0–${DYN_MAX_LAG} wk) that matched BTC best over the previous ${DYN_WINDOW} weeks. Uses past data only.">
+        <input id="i-dyn" type="checkbox"${st.lag.dynamic ? ' checked' : ''}/> Dynamic lead <span class="muted">(best of past year)</span></label>
       <div class="mp-field">
         <div class="row"><span class="key"><i style="background:${C.s3}"></i>Global liquidity lead</span><output id="o-gli"></output></div>
         <input id="i-gli" type="range" min="0" max="${MAX_LAG_WEEKS}" step="1" value="${st.lag.lagGli}" aria-label="Global liquidity lead in weeks" />
@@ -54,10 +56,11 @@ export class ModelPanel {
     const $ = <T extends HTMLElement>(id: string) => this.el.querySelector<T>(`#${id}`)!;
     const num = (id: string) => +$<HTMLInputElement>(id).value;
     const emitLag = () => this.onChange({
-      lag: { lagGli: num('i-gli'), lagMove: num('i-move'), wGli: num('i-w') / 100, norm: $<HTMLSelectElement>('i-norm').value as Norm },
+      lag: { lagGli: num('i-gli'), lagMove: num('i-move'), wGli: num('i-w') / 100, norm: $<HTMLSelectElement>('i-norm').value as Norm, dynamic: $<HTMLInputElement>('i-dyn').checked },
     });
     for (const id of ['i-gli', 'i-move', 'i-w']) $(id).addEventListener('input', emitLag);
     $('i-norm').addEventListener('change', emitLag);
+    $('i-dyn').addEventListener('change', emitLag);
     $('i-comp').addEventListener('change', () => this.onChange({ showAllLines: $<HTMLInputElement>('i-comp').checked }));
     $('i-price').addEventListener('change', () => this.onChange({ btcAsPrice: $<HTMLInputElement>('i-price').checked }));
     $('i-auto').addEventListener('click', () => {
@@ -82,8 +85,10 @@ export class ModelPanel {
 
   private updateOutputs(st: ModelPanelState) {
     const $ = (id: string) => this.el.querySelector<HTMLElement>(`#${id}`)!;
-    $('o-gli').textContent = `${st.lag.lagGli} wk`;
-    $('o-move').textContent = `${st.lag.lagMove} wk`;
+    const dyn = !!st.lag.dynamic, m = this.model;
+    $('o-gli').textContent = dyn ? `auto · now ${m?.gliLagNow ?? '–'} wk` : `${st.lag.lagGli} wk`;
+    $('o-move').textContent = dyn ? `auto · now ${m?.moveLagNow ?? '–'} wk` : `${st.lag.lagMove} wk`;
+    for (const id of ['i-gli', 'i-move', 'i-auto']) (this.el.querySelector(`#${id}`) as HTMLInputElement).disabled = dyn;
     const w = Math.round(st.lag.wGli * 100);
     $('o-w').textContent = `${w}% GLI · ${100 - w}% MOVE⁻¹`;
   }
@@ -91,11 +96,10 @@ export class ModelPanel {
   update(st: ModelPanelState, m: LagModel) {
     this.model = m;
     this.updateOutputs(st);
-    const at = (xc: LagCorr[], lag: number) => xc[lag]?.r ?? NaN;
     this.el.querySelector('#stats')!.innerHTML = `
       <dt>Composite vs BTC, r</dt><dd>${r2(m.rComposite)} <span class="muted">(n=${m.nComposite}w)</span></dd>
-      <dt>GLI at +${st.lag.lagGli}w, r</dt><dd>${r2(at(m.xcGli, st.lag.lagGli))}</dd>
-      <dt>Inverse MOVE at +${st.lag.lagMove}w, r</dt><dd>${r2(at(m.xcMove, st.lag.lagMove))}</dd>
+      <dt>GLI at +${m.gliLagNow}w${m.dynamic ? ' (dyn)' : ''}, r</dt><dd>${r2(m.rGli)}</dd>
+      <dt>Inverse MOVE at +${m.moveLagNow}w${m.dynamic ? ' (dyn)' : ''}, r</dt><dd>${r2(m.rMove)}</dd>
       <dt>Best GLI lead</dt><dd>${m.bestGli.lag}w · r ${r2(m.bestGli.r)}</dd>
       <dt>Best inverse MOVE lead</dt><dd>${m.bestMove.lag}w · r ${r2(m.bestMove.r)}</dd>`;
     this.drawXc();
@@ -126,7 +130,7 @@ export class ModelPanel {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (let lag = 0; lag <= MAX_LAG_WEEKS; lag += 13) ctx.fillText(`${lag}w`, x(lag), h - B + 4);
 
-    const chosen = [this.currentLag('i-gli'), this.currentLag('i-move')];
+    const chosen = m.dynamic ? [m.gliLagNow, m.moveLagNow] : [this.currentLag('i-gli'), this.currentLag('i-move')];
     [[m.xcGli, C.s3], [m.xcMove, C.s4]].forEach(([xc, color], k) => {
       const list = xc as LagCorr[];
       ctx.strokeStyle = color as string; ctx.lineWidth = 2; ctx.beginPath();
