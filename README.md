@@ -22,7 +22,7 @@ npm run build      # static build in dist/
 
 FRED and Yahoo Finance don't allow cross-origin browser requests, so the app tries these sources in order, **for each series**:
 
-1. **Live**: `npm run dev` / `npm run preview` proxy `/api/fred` → fred.stlouisfed.org, `/api/yahoo` → query1.finance.yahoo.com and `/api/binance` → dapi.binance.com (see `vite.config.ts`). Binance data loads only when the bot backtest is opened and has no snapshot/demo fallback.
+1. **Live**: `npm run dev` / `npm run preview` proxy `/api/fred` → fred.stlouisfed.org, `/api/yahoo` → query1.finance.yahoo.com `/api/binance` → dapi.binance.com and `/api/bnspot` → api.binance.com (see `vite.config.ts`). Binance data loads only when the bot backtest is opened and has no snapshot/demo fallback.
 2. **Snapshot**: `public/data/snapshot.json`, written by `npm run fetch-data`. Use this for a static deploy, and re-run it to refresh.
 3. **Demo**: deterministic synthetic data generated in the browser. It is **not market data**: the header badge, the watchlist `DEMO` tags and a banner all say so.
 
@@ -79,7 +79,7 @@ contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). L
 - **Active zones**: new trades and re-entries only open inside either zone. Trades already
   open are still managed and exited.
   - *Bear market*: the close is at least 50% (settable) below the all-time high known at that
-    bar: Binance daily highs since 2020 plus Yahoo BTC history since 2012.
+    bar: Binance daily highs (spot BTCUSDT since 2017, which covers the 2017 high, plus the contract since 2020).
   - *Uptrend*: the close is above a rising EMA of 200 bars (settable; 0 = off).
 - Fees per side and real funding payments are charged. A bar that opens through the stop fills at its open. Slippage and
   liquidation aren't modelled.

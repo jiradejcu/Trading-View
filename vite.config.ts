@@ -19,6 +19,13 @@ const proxy: Record<string, ProxyOptions> = {
     rewrite: (p) => p.replace(/^\/api\/binance/, ''),
     headers: { 'User-Agent': UA },
   },
+  // Not "/api/binance-…": "/api/binance" would match it first.
+  '/api/bnspot': {
+    target: 'https://api.binance.com',
+    changeOrigin: true,
+    rewrite: (p) => p.replace(/^\/api\/bnspot/, ''),
+    headers: { 'User-Agent': UA },
+  },
   '/api/yahoo': {
     target: 'https://query1.finance.yahoo.com',
     changeOrigin: true,

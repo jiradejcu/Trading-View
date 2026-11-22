@@ -101,6 +101,8 @@ export interface BacktestResult {
   bottoms: { time: number; price: number; taken: boolean }[];
   /** The bear-market trigger level (ATH × (1 − drawdown)) at each bar; empty when off. */
   zone: { time: number; value: number }[];
+  /** Which zones each bar's close was in (aligned with bars). */
+  active: { time: number; bear: boolean; up: boolean }[];
   /** Uptrend EMA (empty when off). */
   uptrend: { time: number; value: number }[];
   stats: BacktestStats;
@@ -304,7 +306,8 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
   }
 
   const uptrend = trend ? bars.flatMap((b, i) => (Number.isFinite(trend[i]) ? [{ time: b.time, value: trend[i] }] : [])) : [];
-  return { trades, equity: equityCurve, stops, bottoms, zone, uptrend, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
+  const active = bars.map((b, i) => ({ time: b.time, bear: inBear(i), up: inUptrend(i) }));
+  return { trades, equity: equityCurve, stops, bottoms, zone, active, uptrend, stats: stats(bars, trades, equityCurve, startEquity, barsIn) };
 }
 
 function stats(bars: Bar[], trades: Trade[], eq: { value: number }[], start: number, barsIn: number): BacktestStats {

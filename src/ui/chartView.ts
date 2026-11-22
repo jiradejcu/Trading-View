@@ -48,6 +48,8 @@ export interface ChartSpec {
   logPanes?: number[];
   /** Shade everything after `from` as a projection, with a "Today" line at `from`. */
   forecast?: { from: number; weeks: number };
+  /** Shaded time ranges on the main pane, [from, to) in bar times. */
+  bands?: { from: number; to: number; color: string }[];
 }
 
 export type Drawing =
@@ -75,6 +77,7 @@ export class ChartView {
   private hover: { t: number; p: number } | null = null;
   private raf = 0;
   private forecast: ChartSpec['forecast'] = undefined;
+  private bands: NonNullable<ChartSpec['bands']> = [];
 
   tool: Tool = 'cursor';
   drawings: Drawing[] = [];
@@ -101,6 +104,7 @@ export class ChartView {
     this.priceLines = [];
     this.pending = null;
     this.forecast = spec.forecast;
+    this.bands = spec.bands ?? [];
 
     const chart = createChart(this.el, {
       autoSize: true,
@@ -341,6 +345,7 @@ export class ChartView {
       const y = this.main!.api.priceToCoordinate(pt.p);
       return x == null || y == null ? null : [x + xOff, y] as const;
     };
+    if (this.bands.length) this.drawBands(ctx, xOff, ts.width(), paneH);
     if (this.forecast) this.drawForecast(ctx, xOff, ts.width(), h - ts.height(), paneH);
     ctx.save();
     ctx.beginPath();
@@ -360,6 +365,22 @@ export class ChartView {
     if (this.pending) {
       const A = toXY(this.pending);
       if (A) { ctx.beginPath(); ctx.arc(A[0], A[1], 4, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+
+  /** One rectangle per band, so the shading stays light at any zoom (bars would stack up). */
+  private drawBands(ctx: CanvasRenderingContext2D, xOff: number, plotW: number, paneH: number) {
+    const ts = this.chart!.timeScale();
+    const x = (t: number) => ts.logicalToCoordinate(this.timeToLogical(t) as never);
+    const half = Math.max(0.5, ts.options().barSpacing / 2);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(xOff, 0, plotW, paneH); ctx.clip();
+    for (const b of this.bands) {
+      const a = x(b.from), z = x(b.to);
+      if (a == null || z == null || z < 0 || a > plotW) continue;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(xOff + a - half, 0, Math.max(1, z - a), paneH);
     }
     ctx.restore();
   }

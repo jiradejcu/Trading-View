@@ -26,6 +26,8 @@ const NUMS: { key: NumKey; label: string; min: number; max: number; step: number
   { key: 'uptrendEma', label: 'Also active above EMA (bars)', min: 0, max: 2000, step: 10, title: 'Uptrend zone: also open trades while price closes above a rising EMA of this many bars (200 on 4h ≈ 33 days). 0 = off. With both zones off the bot is always active.' },
 ];
 
+/** The chart library ignores the alpha byte of #rrggbbaa colours. */
+const rgba = (hex: string, a: number) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
 const f2 = (v: number, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '–');
 const pct = (v: number) => (Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : '–');
 const cls = (v: number) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
@@ -55,7 +57,7 @@ export class BotPanel {
         <span><i style="background:${C.draw}"></i>bottom taken</span><span><i style="background:${C.muted}"></i>bottom skipped</span>
         <span><b style="color:${C.s1}">▲</b> long</span><span><b style="color:${C.s7}">▲</b> re-entry</span>
         <span><b style="color:${C.up}">▼</b>/<b style="color:${C.down}">▼</b> exit, R</span>
-        <span><em style="border-color:${C.down}"></em>stop</span><span><em style="border-color:${C.s4}"></em>active below</span><span><em style="border-color:${C.s2};border-top-style:solid"></em>uptrend EMA</span>
+        <span><em style="border-color:${C.down}"></em>stop</span><span><i class="sq" style="background:${C.s4}55"></i>bear zone (ATH line)</span><span><i class="sq" style="background:${C.s3}55"></i>uptrend zone (EMA)</span>
       </div>
       <button id="b-reset" class="mp-btn secondary">Reset to defaults</button>
       <dl class="stats" id="b-stats"><dt>Loading…</dt><dd></dd></dl>
@@ -63,7 +65,7 @@ export class BotPanel {
       <div class="bp-trades" id="b-trades"></div>
       <p class="note"><b>Rules.</b> A bottom is a bar whose low is below the previous <i>left</i> bars and is not undercut by the next <i>right</i> bars.
         The order fills at the next bar's open. New trades (and re-entries) only open inside a zone: the close is at least the set % below the all-time high
-        (Binance daily since 2020 plus Yahoo BTC history since 2012, only up to that bar), or the close is above a rising EMA (uptrend). Open trades are still managed normally. No take profit: the trade closes only at the stop, which each new higher bottom raises to just under it.
+        (Binance daily: spot BTCUSDT since 2017 plus the contract, only up to that bar), or the close is above a rising EMA (uptrend). Open trades are still managed normally. No take profit: the trade closes only at the stop, which each new higher bottom raises to just under it.
         After a stop-out, a close back above the stop level re-opens the long, with the stop under the lowest low since the stop-out. Size = risk % ÷ distance to stop, in whole $100 contracts.
         A bar that opens through the stop fills at the open. Equity and PnL are in BTC (COIN-M is BTC-margined); liquidation and slippage are not modelled.
         Past results don't predict future ones.</p>`;
@@ -152,11 +154,22 @@ export function buildBotSpec(bars: Bar[], r: BacktestResult, st: BotSettings, sc
   }
   markers.sort((a, b) => a.time - b.time);
 
+  // Shade the runs of bars where the bot may open trades. The bear zone wins where both apply.
+  const bear = rgba(C.s4, 0.14), up = rgba(C.s3, 0.1);
+  const bands: NonNullable<ChartSpec['bands']> = [];
+  r.active.forEach((a, i) => {
+    const color = a.bear ? bear : a.up ? up : '';
+    const to = r.active[i + 1]?.time ?? a.time + (a.time - (r.active[i - 1]?.time ?? a.time));
+    const last = bands[bands.length - 1];
+    if (!color) return;
+    if (last && last.color === color && last.to === a.time) last.to = to;
+    else bands.push({ from: a.time, to, color });
+  });
   const series: SeriesSpec[] = [
     { id: 'main', kind: 'candle', title: `BTCUSD_PERP ${st.interval}`, data: bars, main: true, precision: 1, markers },
     { id: 'stop', kind: 'line', title: 'Stop', data: r.stops.map(ws), color: C.down, lineWidth: 1, dashed: true, steps: true, precision: 1, lastValueVisible: false },
     ...(r.zone.length ? [{ id: 'zone', kind: 'line' as const, title: `Active below (ATH −${st.athDrawdownPct}%)`, data: r.zone, color: C.s4, lineWidth: 1 as const, dashed: true, steps: true, precision: 0, lastValueVisible: false }] : []),
-    ...(r.uptrend.length ? [{ id: 'uptrend', kind: 'line' as const, title: `Uptrend EMA ${st.uptrendEma}`, data: r.uptrend, color: C.s2, lineWidth: 1 as const, precision: 0, lastValueVisible: false }] : []),
+    ...(r.uptrend.length ? [{ id: 'uptrend', kind: 'line' as const, title: `Uptrend EMA ${st.uptrendEma}`, data: r.uptrend, color: C.s3, lineWidth: 1 as const, precision: 0, lastValueVisible: false }] : []),
     { id: 'equity', kind: 'line', title: 'Equity (BTC)', data: r.equity, color: C.s7, lineWidth: 2, pane: 1, precision: 4 },
   ];
   return {
@@ -165,6 +178,7 @@ export function buildBotSpec(bars: Bar[], r: BacktestResult, st: BotSettings, sc
     scaleMode: scale,
     defaultYears: st.interval === '1h' ? 1 / 12 : st.interval === '4h' ? 0.25 : 1,
     paneStretch: { 1: 0.3 },
+    bands,
     horzLines: [{ pane: 1, value: r.stats.startEquity }],
   };
 }

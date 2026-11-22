@@ -99,9 +99,8 @@ function currentBacktest() {
       loadBotData(st.bot.interval, st.bot.years)
         .then((d) => {
           if (botLoading !== dataKey) return;
-          // ATH from Yahoo's BTC history (back to 2012, unless it's demo data) plus Binance daily since 2020.
-          const yahoo = uni && uni.source('BTCUSD') !== 'demo' ? uni.bars('BTCUSD') ?? [] : [];
-          botData = { key: dataKey, ...d, ath: athSeries(d.bars, [...yahoo, ...d.daily]) };
+          // ATH from Binance daily: spot BTCUSDT since 2017 plus the contract since 2020.
+          botData = { key: dataKey, ...d, ath: athSeries(d.bars, d.daily) };
           botLoading = '';
         })
         .catch((e: Error) => { if (botLoading === dataKey) { botError = e.message; botLoading = ''; } })

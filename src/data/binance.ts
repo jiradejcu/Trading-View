@@ -7,6 +7,9 @@ export type BotInterval = '1h' | '4h' | '1d';
 export const INTERVAL_SEC: Record<BotInterval, number> = { '1h': 3600, '4h': 14400, '1d': 86400 };
 
 const BASE = '/api/binance';
+/** Binance spot, used only for daily history back to 2017 (the all-time high). */
+const SPOT = '/api/bnspot/api/v3/klines?symbol=BTCUSDT';
+const COINM = `${BASE}/dapi/v1/klines?symbol=${COINM_SYMBOL}`;
 const TIMEOUT_MS = 20_000;
 const PAGE = 1500;
 
@@ -23,11 +26,11 @@ export function parseKlines(rows: Kline[]): Bar[] {
 }
 
 /** Klines from `startSec` to now, paged backwards. The still-forming last bar is dropped. */
-export async function fetchKlines(interval: BotInterval, startSec: number): Promise<Bar[]> {
+export async function fetchKlines(interval: BotInterval, startSec: number, url = COINM): Promise<Bar[]> {
   const pages: Bar[][] = [];
   let end = Date.now();
   for (let n = 0; n < 40; n++) {
-    const rows = await getJson<Kline[]>(`${BASE}/dapi/v1/klines?symbol=${COINM_SYMBOL}&interval=${interval}&limit=${PAGE}&endTime=${end}`);
+    const rows = await getJson<Kline[]>(`${url}&interval=${interval}&limit=${PAGE}&endTime=${end}`);
     if (!rows.length) break;
     const bars = parseKlines(rows);
     pages.unshift(bars);
@@ -53,11 +56,15 @@ export async function fetchFunding(startSec: number): Promise<FundingEvent[]> {
   return out;
 }
 
-/** Contract launch (Aug 2020); daily history from here feeds the all-time high. */
+/** Contract launch (Aug 2020) and spot BTCUSDT listing (Aug 2017, before the 2017 high). */
 const LAUNCH_SEC = Math.floor(Date.UTC(2020, 7, 1) / 1000);
+const SPOT_START_SEC = Math.floor(Date.UTC(2017, 7, 1) / 1000);
 let dailyAll: Promise<Bar[]> | null = null;
+/** Daily highs for the all-time high: spot since 2017 plus the contract's own (its wicks can differ). */
 export function loadDailyHistory() {
-  dailyAll ??= fetchKlines('1d', LAUNCH_SEC).catch((e) => { dailyAll = null; throw e; });
+  dailyAll ??= Promise.all([fetchKlines('1d', SPOT_START_SEC, SPOT), fetchKlines('1d', LAUNCH_SEC)])
+    .then(([spot, perp]) => [...spot, ...perp].sort((a, b) => a.time - b.time))
+    .catch((e) => { dailyAll = null; throw e; });
   return dailyAll;
 }
 

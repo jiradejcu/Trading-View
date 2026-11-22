@@ -129,6 +129,7 @@ button { cursor: pointer; }
 .bp-grid input, .bp-grid select { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; color: var(--text-strong); width: 100%; font-variant-numeric: tabular-nums; }
 .bp-key { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
 .bp-key i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.bp-key i.sq { border-radius: 2px; width: 10px; height: 10px; vertical-align: -1px; }
 .bp-key b { font-size: 10px; margin-right: 2px; }
 .bp-key em { display: inline-block; width: 14px; border-top: 1px dashed; margin-right: 4px; vertical-align: 3px; }
 .bp-trades-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
