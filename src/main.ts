@@ -10,6 +10,13 @@ import { fmtDate } from './lib/time';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
+// ---- PWA: register the service worker (production builds only) --------------
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => { /* app still works without it */ });
+  });
+}
+
 // ---- Persisted per-viewer preferences (best-effort) -------------------------
 const STORE_KEY = 'lagline:state:v1';
 const DRAW_KEY = 'lagline:drawings:v1';
