@@ -3,7 +3,7 @@ import { loadDataset } from './data/store';
 import { ChartView, type Drawing, type Tool } from './ui/chartView';
 import { ModelPanel, type ModelPanelState } from './ui/modelPanel';
 import {
-  INDICATORS, SYMBOLS, Universe, buildSpec, symbolDef, type ChartType, type IndicatorId, type ViewState,
+  INDICATORS, SYMBOLS, Universe, buildSpec, rankModelLines, symbolDef, type ChartType, type IndicatorId, type ViewState,
 } from './ui/symbols';
 import type { SourceKind, Timeframe } from './lib/types';
 import { fmtDate } from './lib/time';
@@ -35,6 +35,7 @@ const defaults: ViewState = {
   lag: { lagGli: 12, lagMove: 6, wGli: 0.5, norm: 'rollz' },
   btcAsPrice: false,
   showComponents: true,
+  showAllLines: false,
 };
 const st: ViewState = load(STORE_KEY, defaults);
 if (!SYMBOLS.some((s) => s.id === st.symbol)) st.symbol = defaults.symbol;
@@ -90,10 +91,11 @@ function render() {
   const last = view.lastMainValue();
   if (isModel) {
     const m = uni.model(st.lag);
+    const best = rankModelLines(m, st.lag)[0];
     const ch = $('#ch-last');
-    ch.innerHTML = `<span class="ch-label">corr</span> ${Number.isFinite(m.rComposite) ? m.rComposite.toFixed(2) : '–'}`;
-    ch.title = 'Correlation between the composite (liquidity + inverse MOVE, shifted by the leads) and BTC. 1 = move together, 0 = unrelated, −1 = opposite.';
-    $('#ch-change').innerHTML = `<span class="muted">composite vs BTC<span class="wide-only"> · latest BTC week ${fmtDate(m.lastBtcTime)}</span></span>`;
+    ch.innerHTML = `<span class="ch-label">corr</span> ${Number.isFinite(best.r) ? best.r.toFixed(2) : '–'}`;
+    ch.title = `Correlation between ${best.name} and BTC. 1 = move together, 0 = unrelated, −1 = opposite.`;
+    $('#ch-change').innerHTML = `<span class="muted">${best.name} vs BTC<span class="wide-only"> · latest BTC week ${fmtDate(m.lastBtcTime)}</span></span>`;
   } else if (last) {
     $('#ch-last').title = '';
     const ch = last.value - last.prev, pct = (ch / last.prev) * 100;

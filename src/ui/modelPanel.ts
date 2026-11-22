@@ -3,7 +3,7 @@ import { MAX_LAG_WEEKS, NORM_LABEL } from '../custom/liquidity';
 import type { LagCorr } from '../lib/series';
 import { C } from './theme';
 
-export interface ModelPanelState { lag: LagParams; btcAsPrice: boolean; showComponents: boolean }
+export interface ModelPanelState { lag: LagParams; btcAsPrice: boolean; showAllLines: boolean }
 
 const r2 = (r: number) => (Number.isFinite(r) ? r.toFixed(2) : '–');
 
@@ -37,7 +37,8 @@ export class ModelPanel {
         <label for="i-norm" class="muted">Normalization</label>
         <select id="i-norm">${norms}</select>
       </div>
-      <label class="mp-check"><input id="i-comp" type="checkbox"${st.showComponents ? ' checked' : ''}/> Show components</label>
+      <label class="mp-check" title="Off: BTC plus the two lines that correlate best with it">
+        <input id="i-comp" type="checkbox"${st.showAllLines ? ' checked' : ''}/> Show all lines</label>
       <label class="mp-check"><input id="i-price" type="checkbox"${st.btcAsPrice ? ' checked' : ''}/> BTC price pane (log)</label>
       <button id="i-auto" class="mp-btn">Auto-fit lags (max correlation)</button>
       <dl class="stats" id="stats"></dl>
@@ -57,7 +58,7 @@ export class ModelPanel {
     });
     for (const id of ['i-gli', 'i-move', 'i-w']) $(id).addEventListener('input', emitLag);
     $('i-norm').addEventListener('change', emitLag);
-    $('i-comp').addEventListener('change', () => this.onChange({ showComponents: $<HTMLInputElement>('i-comp').checked }));
+    $('i-comp').addEventListener('change', () => this.onChange({ showAllLines: $<HTMLInputElement>('i-comp').checked }));
     $('i-price').addEventListener('change', () => this.onChange({ btcAsPrice: $<HTMLInputElement>('i-price').checked }));
     $('i-auto').addEventListener('click', () => {
       if (!this.model) return;

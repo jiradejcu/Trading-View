@@ -370,7 +370,7 @@ export class ChartView {
     const y = paneH - 6;
     ctx.fillStyle = C.text; ctx.textAlign = 'right'; ctx.fillText('Today', x - 5, y);
     const room = right - x - 10;
-    const label = [`Forecast ${f.weeks} wk →`, `+${f.weeks} wk →`].find((t) => ctx.measureText(t).width <= room);
+    const label = [`Forecast ${f.weeks} wk →`, `+${f.weeks} wk →`, `+${f.weeks}w`].find((t) => ctx.measureText(t).width <= room);
     if (label) { ctx.fillStyle = C.s2; ctx.textAlign = 'left'; ctx.fillText(label, x + 5, y); }
     ctx.restore();
   }

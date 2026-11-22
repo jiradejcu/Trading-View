@@ -1,5 +1,5 @@
 import type { Bar, Point, SourceKind, Timeframe } from '../lib/types';
-import { bollinger, closes, ema, resampleBars, resamplePoints, rsi, sma } from '../lib/series';
+import { bollinger, closes, ema, resampleBars, resamplePoints, rollingCorrelation, rsi, sma } from '../lib/series';
 import type { Dataset } from '../data/store';
 import type { YahooSymbol } from '../data/sources';
 import {
@@ -57,6 +57,8 @@ export interface ViewState {
   lag: LagParams;
   btcAsPrice: boolean;
   showComponents: boolean;
+  /** Lag model: show all indicator lines instead of only the two best-correlated. */
+  showAllLines: boolean;
 }
 
 const rank: Record<SourceKind, number> = { live: 0, snapshot: 1, demo: 2 };
@@ -176,22 +178,32 @@ export function buildSpec(u: Universe, st: ViewState): ChartSpec {
   };
 }
 
+export interface ModelLine { id: string; name: string; title: string; r: number; data: Point[]; color: string }
+
+/** The model's three indicator lines, best correlation with BTC first. */
+export function rankModelLines(m: LagModel, lag: LagParams): ModelLine[] {
+  const lines: ModelLine[] = [
+    { id: 'comp', name: 'Composite', title: `Composite (${Math.round(lag.wGli * 100)}% GLI +${lag.lagGli}w / ${Math.round((1 - lag.wGli) * 100)}% inv MOVE +${lag.lagMove}w)`,
+      r: m.rComposite, data: m.composite, color: C.s2 },
+    { id: 'gli', name: `Global liquidity +${lag.lagGli}w`, title: `Global liquidity, +${lag.lagGli}w`, r: m.xcGli[lag.lagGli]?.r ?? NaN, data: m.gliShifted, color: C.s3 },
+    { id: 'move', name: `Inverse MOVE +${lag.lagMove}w`, title: `Inverse MOVE, +${lag.lagMove}w`, r: m.xcMove[lag.lagMove]?.r ?? NaN, data: m.moveShifted, color: C.s4 },
+  ];
+  const key = (r: number) => (Number.isFinite(r) ? r : -Infinity);
+  return lines.sort((a, b) => key(b.r) - key(a.r));
+}
+
 function buildModelSpec(u: Universe, st: ViewState): ChartSpec {
   const m = u.model(st.lag);
   const series: SeriesSpec[] = [];
-  const projWeeks = m.composite.filter((p) => p.time > m.lastBtcTime).length;
 
-  // Pane 0: everything in the same z-units on one axis.
-  series.push({
-    id: 'comp', kind: 'line', title: `Composite (${Math.round(st.lag.wGli * 100)}% GLI +${st.lag.lagGli}w / ${Math.round((1 - st.lag.wGli) * 100)}% inv MOVE +${st.lag.lagMove}w)`,
-    data: pts(m.composite), color: C.s2, lineWidth: 3, main: true,
-  });
-  if (st.showComponents) {
-    series.push(
-      { id: 'gli', kind: 'line', title: `Global liquidity, +${st.lag.lagGli}w`, data: pts(m.gliShifted), color: C.s3, lineWidth: 1, lastValueVisible: false },
-      { id: 'move', kind: 'line', title: `Inverse MOVE, +${st.lag.lagMove}w`, data: pts(m.moveShifted), color: C.s4, lineWidth: 1, lastValueVisible: false },
-    );
-  }
+  // Pane 0: everything in the same z-units on one axis. BTC plus the two indicator
+  // lines that correlate best with it (all three with "Show all lines").
+  const shown = rankModelLines(m, st.lag).slice(0, st.showAllLines ? 3 : 2);
+  const projWeeks = Math.max(0, ...shown.map((l) => l.data.filter((p) => p.time > m.lastBtcTime).length));
+  shown.forEach((l, i) => series.push({
+    id: l.id, kind: 'line', title: `${l.title} (r ${Number.isFinite(l.r) ? l.r.toFixed(2) : '–'})`,
+    data: pts(l.data), color: l.color, lineWidth: i === 0 ? 3 : 2, main: i === 0, lastValueVisible: i === 0,
+  }));
   series.push({ id: 'btcn', kind: 'line', title: 'BTC (same normalization)', data: pts(m.btcNorm), color: C.s1, lineWidth: 2 });
 
   // Optional pane: BTC price on its own log axis (never a second axis on the comparison pane).
@@ -201,8 +213,8 @@ function buildModelSpec(u: Universe, st: ViewState): ChartSpec {
     corrPane = 2;
   }
   series.push({
-    id: 'corr', kind: 'histogram', title: '26w rolling correlation (composite vs BTC)', pane: corrPane, precision: 2, color: C.up,
-    data: m.rollingCorr.map((p) => ({ time: p.time, value: p.value, color: p.value >= 0 ? `${C.up}aa` : `${C.down}aa` })),
+    id: 'corr', kind: 'histogram', title: `26w rolling correlation (${shown[0].name} vs BTC)`, pane: corrPane, precision: 2, color: C.up,
+    data: (shown[0].id === 'comp' ? m.rollingCorr : rollingCorrelation(shown[0].data, m.btcNorm, 26)).map((p) => ({ time: p.time, value: p.value, color: p.value >= 0 ? `${C.up}aa` : `${C.down}aa` })),
   });
 
   return {
