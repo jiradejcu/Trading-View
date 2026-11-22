@@ -13,6 +13,12 @@ const proxy: Record<string, ProxyOptions> = {
     rewrite: (p) => p.replace(/^\/api\/fred/, ''),
     headers: { 'User-Agent': UA },
   },
+  '/api/binance': {
+    target: 'https://dapi.binance.com',
+    changeOrigin: true,
+    rewrite: (p) => p.replace(/^\/api\/binance/, ''),
+    headers: { 'User-Agent': UA },
+  },
   '/api/yahoo': {
     target: 'https://query1.finance.yahoo.com',
     changeOrigin: true,

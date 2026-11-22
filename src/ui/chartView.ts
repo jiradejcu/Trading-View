@@ -1,5 +1,5 @@
 import {
-  AreaSeries, BarSeries, CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, LineSeries, LineStyle,
+  AreaSeries, BarSeries, CandlestickSeries, ColorType, CrosshairMode, HistogramSeries, LineSeries, LineStyle, LineType,
   PriceScaleMode, createChart, createSeriesMarkers,
   type IChartApi, type IPriceLine, type ISeriesApi, type MouseEventParams, type SeriesMarker, type SeriesType,
   type Time, type UTCTimestamp,
@@ -18,6 +18,8 @@ export interface SeriesSpec {
   color?: string;
   lineWidth?: 1 | 2 | 3 | 4;
   dashed?: boolean;
+  /** Draw as a step line (for levels such as stops). */
+  steps?: boolean;
   pane?: number;
   priceScaleId?: string;
   /** The series drawings and the header price attach to. Exactly one per chart. */
@@ -26,7 +28,10 @@ export interface SeriesSpec {
   hideInLegend?: boolean;
   precision?: number;
   lastValueVisible?: boolean;
-  markers?: { time: number; text: string }[];
+  markers?: {
+    time: number; text: string;
+    position?: 'aboveBar' | 'belowBar'; color?: string; shape?: 'arrowUp' | 'arrowDown' | 'circle' | 'square';
+  }[];
 }
 
 export interface ChartSpec {
@@ -128,7 +133,7 @@ export class ChartView {
       if (s.kind === 'bar') Object.assign(opts, { upColor: C.up, downColor: C.down });
       if (s.kind === 'line') Object.assign(opts, {
         color: s.color, lineWidth: s.lineWidth ?? 2, lineStyle: s.dashed ? LineStyle.Dashed : LineStyle.Solid,
-        crosshairMarkerRadius: 4,
+        crosshairMarkerRadius: 4, lineType: s.steps ? LineType.WithSteps : LineType.Simple,
       });
       if (s.kind === 'area') Object.assign(opts, {
         lineColor: s.color, topColor: `${s.color}55`, bottomColor: `${s.color}05`, lineWidth: s.lineWidth ?? 2,
@@ -139,7 +144,8 @@ export class ChartView {
       api.setData(s.data as never);
       if (s.markers?.length) {
         createSeriesMarkers(api, s.markers.map((m): SeriesMarker<Time> => ({
-          time: m.time as UTCTimestamp, position: 'aboveBar', color: C.muted, shape: 'arrowDown', text: m.text,
+          time: m.time as UTCTimestamp, position: m.position ?? 'aboveBar', color: m.color ?? C.muted,
+          shape: m.shape ?? 'arrowDown', text: m.text,
         })));
       }
       const entry = { spec: s, api };
@@ -185,6 +191,13 @@ export class ChartView {
       from: (lastMain - years * YEAR) as UTCTimestamp,
       to: Math.max(end, lastMain) as UTCTimestamp,
     });
+  }
+
+  /** Show [from, to] with some context on both sides. */
+  focusRange(from: number, to: number) {
+    if (!this.chart) return;
+    const pad = Math.max((to - from) * 1.5, 86400 * 3);
+    this.chart.timeScale().setVisibleRange({ from: (from - pad) as UTCTimestamp, to: (to + pad) as UTCTimestamp });
   }
 
   lastMainValue(): { value: number; prev: number } | null {

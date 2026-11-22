@@ -8,8 +8,9 @@ import {
 } from '../custom/liquidity';
 import type { ChartSpec, SeriesSpec } from './chartView';
 import { C } from './theme';
+import type { BotSettings } from './botPanel';
 
-export type SymbolKind = 'ohlc' | 'line' | 'model';
+export type SymbolKind = 'ohlc' | 'line' | 'model' | 'backtest';
 
 export interface SymbolDef {
   id: string;
@@ -23,6 +24,7 @@ export interface SymbolDef {
 
 export const SYMBOLS: SymbolDef[] = [
   { id: 'LAGMODEL', name: 'LIQ·MOVE→BTC', desc: 'Custom: inverse MOVE + global liquidity vs lagged Bitcoin', exchange: 'CUSTOM', kind: 'model', precision: 2, custom: true },
+  { id: 'BOTTOMBOT', name: 'BOTTOM BOT', desc: 'Backtest: long confirmed bottoms, stop below · BTCUSD_PERP', exchange: 'BINANCE COIN-M', kind: 'backtest', precision: 1, custom: true },
   { id: 'GLI', name: 'GLI', desc: 'Custom: Global liquidity index (Fed net + ECB + BOJ), USD trillions', exchange: 'CUSTOM', kind: 'line', precision: 2, custom: true },
   { id: 'INVMOVE', name: 'INVMOVE', desc: 'Custom: Inverse ICE BofA MOVE index (100 / MOVE)', exchange: 'CUSTOM', kind: 'ohlc', precision: 3, custom: true },
   { id: 'BTCUSD', name: 'BTCUSD', desc: 'Bitcoin / U.S. Dollar', exchange: 'CRYPTO', kind: 'ohlc', precision: 0 },
@@ -59,6 +61,8 @@ export interface ViewState {
   showComponents: boolean;
   /** Lag model: show all indicator lines instead of only the two best-correlated. */
   showAllLines: boolean;
+  /** Bottom-bot backtest settings. */
+  bot: BotSettings;
 }
 
 const rank: Record<SourceKind, number> = { live: 0, snapshot: 1, demo: 2 };
@@ -78,6 +82,7 @@ export class Universe {
   source(id: string): SourceKind {
     if (id === 'GLI') return this.ds.fred.source;
     if (id === 'INVMOVE') return this.ds.bars.MOVE.source;
+    if (id === 'BOTTOMBOT') return 'live';
     if (id === 'LAGMODEL') return worst(this.ds.fred.source, this.ds.bars.MOVE.source, this.ds.bars.BTCUSD.source);
     return this.ds.bars[id as YahooSymbol]?.source ?? 'demo';
   }

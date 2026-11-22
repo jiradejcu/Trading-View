@@ -58,6 +58,7 @@ button { cursor: pointer; }
    lines (GLI) and everything price-chart specific for the lag model. */
 .topbar[data-kind="line"] #chart-type, .topbar[data-kind="line"] #chart-type + .sep,
 .topbar[data-kind="model"] :is(#compare-btn, #tf-group, #chart-type, #ind-btn, .sep) { display: none; }
+.topbar[data-kind="backtest"] :is(#compare-btn, #tf-group, #chart-type, #ind-btn, .sep) { display: none; }
 
 .lefttools { grid-area: tools; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px;
   border-right: 4px solid #0c0e15; }
@@ -122,6 +123,22 @@ button { cursor: pointer; }
 .mp-btn { background: var(--accent); color: #fff; border: 0; border-radius: 4px; padding: 6px 10px; font-weight: 600; }
 .mp-btn:disabled { opacity: .35; cursor: default; }
 .mp-btn:hover { filter: brightness(1.1); }
+.mp-btn.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+.bp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bp-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.bp-grid input, .bp-grid select { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; color: var(--text-strong); width: 100%; font-variant-numeric: tabular-nums; }
+.bp-key { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
+.bp-key i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.bp-key b { font-size: 10px; margin-right: 2px; }
+.bp-key em { display: inline-block; width: 14px; border-top: 1px dashed; margin-right: 4px; vertical-align: 3px; }
+.bp-trades-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
+.bp-trades-head .muted { font-size: 10px; }
+.bp-trades { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; overscroll-behavior: contain; }
+.bp-trade { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; width: 100%; padding: 5px 8px; background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: left; font-size: 11px; font-variant-numeric: tabular-nums; }
+.bp-trade:hover { background: var(--panel-2); }
+.bp-trade small { display: block; color: var(--muted); font-size: 10px; }
+.bp-trade > :last-child { text-align: right; }
+.stats dd.up { color: var(--up, #26a69a); } .stats dd.down { color: var(--down, #ef5350); }
 .stats { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .stats dt { color: var(--muted); }
 .stats dd { margin: 0; text-align: right; color: var(--text-strong); }

@@ -22,7 +22,7 @@ npm run build      # static build in dist/
 
 FRED and Yahoo Finance don't allow cross-origin browser requests, so the app tries these sources in order, **for each series**:
 
-1. **Live**: `npm run dev` / `npm run preview` proxy `/api/fred` → fred.stlouisfed.org and `/api/yahoo` → query1.finance.yahoo.com (see `vite.config.ts`).
+1. **Live**: `npm run dev` / `npm run preview` proxy `/api/fred` → fred.stlouisfed.org, `/api/yahoo` → query1.finance.yahoo.com and `/api/binance` → dapi.binance.com (see `vite.config.ts`). Binance data loads only when the bot backtest is opened and has no snapshot/demo fallback.
 2. **Snapshot**: `public/data/snapshot.json`, written by `npm run fetch-data`. Use this for a static deploy, and re-run it to refresh.
 3. **Demo**: deterministic synthetic data generated in the browser. It is **not market data**: the header badge, the watchlist `DEMO` tags and a banner all say so.
 
@@ -42,6 +42,7 @@ After code changes: `npm run build && systemctl --user restart trading-view-web`
 | `GLI` | Global liquidity, USD trillions, weekly: **Fed net liquidity** (`WALCL − WTREGEN − RRPONTSYD`) + **ECB** assets (`ECBASSETSW × DEXUSEU`) + **BOJ** assets (`JPNASSETS ÷ DEXJPUS`). The PBoC isn't included because FRED doesn't carry it. |
 | `INVMOVE` | `100 / MOVE` (Yahoo `^MOVE`), as OHLC. Rising = calmer Treasury market. |
 | `LIQ·MOVE→BTC` | The lag model (below). |
+| `BOTTOM BOT` | Backtest of a long-only bottom-buying bot on Binance COIN-M `BTCUSD_PERP` (below). |
 
 ### The lag model
 
@@ -59,6 +60,26 @@ After code changes: `npm run build && systemctl --user restart trading-view-web`
 All series in the comparison pane share one axis (z-units). BTC's price can be shown in its
 own log-scale pane. Correlation between trending series overstates the fit, and
 in-sample "best lag" is curve-fitting. Treat this as an exploration tool, not a signal.
+
+
+### The bottom bot (backtest)
+
+Binance COIN-M `BTCUSD_PERP` klines (1h / 4h / 1d) and funding rates, BTC-margined inverse
+contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). Logic in
+`src/bot/bottomBot.ts`:
+
+- **Bottom**: a bar whose low is below the previous *left* bars and isn't undercut by the
+  next *right* bars. It's known at the close of the *right*-th bar; the long fills at the next open.
+- **Stop**: *buffer %* below the bottom's low. Size = *risk %* of equity ÷ distance to the stop,
+  in whole contracts, capped by *max leverage*. Optional take profit at *N R*.
+- **Trail**: each new higher bottom while in a trade raises the stop to just under it.
+- **Re-entry**: after a stop-out, a close back above the stop level re-opens the long,
+  with the stop under the lowest low since the stop-out.
+- Fees per side and real funding payments are charged. If one bar touches both stop and
+  target the stop wins; a bar that opens through the stop fills at its open. Slippage and
+  liquidation aren't modelled.
+
+This is a backtest only; it places no orders.
 
 ## Layout
 

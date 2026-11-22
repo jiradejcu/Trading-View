@@ -7,6 +7,10 @@ import {
 } from './ui/symbols';
 import type { SourceKind, Timeframe } from './lib/types';
 import { fmtDate } from './lib/time';
+import { BotPanel, DEFAULT_BOT_SETTINGS, buildBotSpec, type BotSettings } from './ui/botPanel';
+import { backtest, type BacktestResult } from './bot/bottomBot';
+import { loadBotData } from './data/binance';
+import type { Bar } from './lib/types';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
@@ -36,10 +40,12 @@ const defaults: ViewState = {
   btcAsPrice: false,
   showComponents: true,
   showAllLines: false,
+  bot: DEFAULT_BOT_SETTINGS,
 };
 const st: ViewState = load(STORE_KEY, defaults);
 if (!SYMBOLS.some((s) => s.id === st.symbol)) st.symbol = defaults.symbol;
 st.lag.dynamic ??= true; // dynamic leads are the default
+st.bot = { ...DEFAULT_BOT_SETTINGS, ...st.bot };
 const drawings: Record<string, Drawing[]> = load(DRAW_KEY, {});
 
 // ---- Views --------------------------------------------------------------------
@@ -67,6 +73,33 @@ const panel = new ModelPanel($('#model-panel'), (patch: Partial<ModelPanelState>
 });
 let uni: Universe | null = null;
 
+// ---- Bottom-bot backtest (Binance data loads on first use) ------------------
+const botPanel = new BotPanel($('#bot-panel'), (s: BotSettings) => { st.bot = s; scheduleRender(); });
+botPanel.onFocusTrade = (t) => view.focusRange(t.entryTime, t.exitTime);
+let bot: { key: string; bars: Bar[]; result: BacktestResult } | null = null;
+let botData: { key: string; bars: Bar[]; funding: Awaited<ReturnType<typeof loadBotData>>['funding'] } | null = null;
+let botLoading = '';
+let botError = '';
+
+/** Returns the current backtest, or null while Binance data is loading. */
+function currentBacktest() {
+  const dataKey = `${st.bot.interval}|${st.bot.years}`;
+  if (botData?.key !== dataKey) {
+    if (botLoading !== dataKey) {
+      botLoading = dataKey;
+      botError = '';
+      loadBotData(st.bot.interval, st.bot.years)
+        .then((d) => { if (botLoading === dataKey) { botData = { key: dataKey, ...d }; botLoading = ''; } })
+        .catch((e: Error) => { if (botLoading === dataKey) { botError = e.message; botLoading = ''; } })
+        .finally(scheduleRender);
+    }
+    return null;
+  }
+  const key = JSON.stringify(st.bot);
+  if (bot?.key !== key) bot = { key, bars: botData.bars, result: backtest(botData.bars, st.bot, botData.funding) };
+  return bot;
+}
+
 let renderQueued = false;
 function scheduleRender() {
   if (renderQueued) return;
@@ -81,8 +114,13 @@ function render() {
   save(STORE_KEY, st);
   const def = symbolDef(st.symbol);
   const isModel = def.kind === 'model';
+  const isBot = def.kind === 'backtest';
+  const bt = isBot ? currentBacktest() : null;
+  $('#loading').hidden = !(isBot && !bt && !botError);
+  if (isBot && !bt) $('#loading-msg').textContent = 'Loading Binance BTCUSD_PERP…';
 
-  view.render(buildSpec(uni, st));
+  if (!isBot) view.render(buildSpec(uni, st));
+  else if (bt) view.render(buildBotSpec(bt.bars, bt.result, st.bot, st.scale === 'percent' ? 'normal' : st.scale));
   view.setDrawings(drawings[def.id] ?? []);
 
   // Header
@@ -97,6 +135,13 @@ function render() {
     ch.innerHTML = `<span class="ch-label">corr</span> ${Number.isFinite(best.r) ? best.r.toFixed(2) : '–'}`;
     ch.title = `Correlation between ${best.name} and BTC. 1 = move together, 0 = unrelated, −1 = opposite.`;
     $('#ch-change').innerHTML = `<span class="muted">${best.name} vs BTC<span class="wide-only"> · latest BTC week ${fmtDate(m.lastBtcTime)}</span></span>`;
+  } else if (isBot) {
+    const s = bt?.result.stats;
+    $('#ch-last').title = 'Backtest return, measured in BTC (COIN-M is BTC-margined)';
+    $('#ch-last').innerHTML = s ? `<span class="ch-label">BTC</span> <span class="${s.returnPct >= 0 ? 'up' : 'down'}">${s.returnPct >= 0 ? '+' : ''}${s.returnPct.toFixed(1)}%</span>` : '';
+    $('#ch-change').innerHTML = s
+      ? `<span class="muted">${s.trades} trades · win ${Number.isFinite(s.winRate) ? s.winRate.toFixed(0) : '–'}% · PF ${Number.isFinite(s.profitFactor) ? s.profitFactor.toFixed(2) : '–'}<span class="wide-only"> · max DD ${s.maxDrawdownPct.toFixed(1)}%</span></span>`
+      : botError ? `<span class="down">Binance unreachable: ${botError}</span>` : '';
   } else if (last) {
     $('#ch-last').title = '';
     const ch = last.value - last.prev, pct = (ch / last.prev) * 100;
@@ -108,19 +153,19 @@ function render() {
   $('.topbar').dataset.kind = def.kind;
   document.querySelectorAll<HTMLButtonElement>('#tf-group button').forEach((b) => {
     b.classList.toggle('active', b.dataset.tf === st.tf);
-    b.disabled = isModel || (def.kind === 'line' && b.dataset.tf === 'D');
+    b.disabled = isModel || isBot || (def.kind === 'line' && b.dataset.tf === 'D');
   });
   const ct = $<HTMLSelectElement>('#chart-type');
   ct.value = st.chartType;
   ct.disabled = def.kind !== 'ohlc';
-  $<HTMLButtonElement>('#compare-btn').disabled = isModel;
-  $<HTMLButtonElement>('#ind-btn').disabled = isModel;
+  $<HTMLButtonElement>('#compare-btn').disabled = isModel || isBot;
+  $<HTMLButtonElement>('#ind-btn').disabled = isModel || isBot;
   $('#compare-btn').innerHTML = st.compare && !isModel
     ? `＋<span class="wide-only"> vs</span> ${symbolDef(st.compare).name} ✕`
     : '＋<span class="wide-only"> Compare</span>';
   document.querySelectorAll<HTMLButtonElement>('#scale-group button').forEach((b) => {
-    b.disabled = isModel;
-    b.classList.toggle('active', !isModel && b.dataset.scale === (st.compare ? 'percent' : st.scale));
+    b.disabled = isModel || (isBot && b.dataset.scale === 'percent');
+    b.classList.toggle('active', !isModel && b.dataset.scale === (st.compare && !isBot ? 'percent' : st.scale));
   });
 
   // Model panel
@@ -129,6 +174,13 @@ function render() {
   if (isModel) {
     if (!mp.dataset.mounted) { panel.mount(st); mp.dataset.mounted = '1'; }
     panel.update(st, uni.model(st.lag));
+  }
+  const bp = $('#bot-panel');
+  bp.hidden = !isBot;
+  if (isBot) {
+    if (!bp.dataset.mounted) { botPanel.mount(st.bot); bp.dataset.mounted = '1'; }
+    if (bt) botPanel.update(bt.result, bt.bars);
+    else botPanel.setStatus(botError ? `Couldn't load Binance data (${botError}).` : 'Loading Binance data…');
   }
 
   renderSource(def.id);
@@ -152,7 +204,11 @@ function renderWatchlist() {
   if (!uni) return;
   const rows = SYMBOLS.map((s) => {
     let last = '–', chg = '', cls = '';
-    if (s.kind === 'model') {
+    if (s.kind === 'backtest') {
+      const r = bot && botData && s.id === 'BOTTOMBOT' ? bot.result.stats.returnPct : NaN;
+      last = Number.isFinite(r) ? `${r >= 0 ? '+' : ''}${r.toFixed(1)}% ₿` : 'backtest';
+      cls = r >= 0 ? 'up' : r < 0 ? 'down' : '';
+    } else if (s.kind === 'model') {
       const r = uni!.model(st.lag).rComposite;
       last = Number.isFinite(r) ? `corr ${r.toFixed(2)}` : '–';
     } else {
