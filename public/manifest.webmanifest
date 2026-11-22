@@ -1,6 +1,6 @@
 {
-  "name": "Lagline Charts",
-  "short_name": "Lagline",
+  "name": "My Trading View",
+  "short_name": "Trading View",
   "description": "TradingView-style charts with the LIQ·MOVE→BTC lag model.",
   "id": "./",
   "start_url": "./",

@@ -1,4 +1,4 @@
-# Lagline Charts
+# My Trading View
 
 A TradingView-style charting web app (dark terminal layout, symbol search, watchlist,
 candles/bars/line/area, 1D/1W/1M intervals, indicators, compare overlay, log/% scales,
