@@ -48,11 +48,17 @@ st.lag.dynamic ??= true; // dynamic leads are the default
 {
   const saved = st.bot as Partial<BotSettings> | undefined;
   // Settings saved under older defaults move to the current (optimized) ones once.
-  // v2 → v3 only added the uptrend zone: keep the user's other settings.
+  // From v2/v3, keep the user's other settings and apply what changed:
+  // v3 added the uptrend zone; v4 moved to right 12, slippage and history since 2017.
   const { trendEma: _old, ...kept } = (saved ?? {}) as BotSettings & { trendEma?: number };
-  st.bot = saved?.v === BOT_DEFAULTS_VERSION ? { ...DEFAULT_BOT_SETTINGS, ...saved }
-    : saved?.v === 2 ? { ...DEFAULT_BOT_SETTINGS, ...kept, uptrendEma: DEFAULT_BOT_SETTINGS.uptrendEma, v: BOT_DEFAULTS_VERSION }
-    : { ...DEFAULT_BOT_SETTINGS };
+  const D = DEFAULT_BOT_SETTINGS;
+  st.bot = saved?.v === BOT_DEFAULTS_VERSION ? { ...D, ...saved }
+    : saved?.v === 2 || saved?.v === 3 ? {
+      ...D, ...kept, right: D.right, slipPct: D.slipPct, v: BOT_DEFAULTS_VERSION,
+      ...(saved.v === 2 ? { uptrendEma: D.uptrendEma } : {}),
+      ...(kept.interval === '1h' ? {} : { years: D.years }),
+    }
+    : { ...D };
 }
 const drawings: Record<string, Drawing[]> = load(DRAW_KEY, {});
 
@@ -133,7 +139,7 @@ function render() {
   if (isBot && !bt) $('#loading-msg').textContent = 'Loading Binance BTCUSD_PERP…';
 
   if (!isBot) view.render(buildSpec(uni, st));
-  else if (bt) view.render(buildBotSpec(bt.bars, bt.result, st.bot, st.scale === 'percent' ? 'normal' : st.scale));
+  else if (bt) view.render(buildBotSpec(bt.bars, bt.result, st.bot, st.scale === 'percent' ? 'normal' : st.scale, botData?.spotUntil ?? null));
   view.setDrawings(drawings[def.id] ?? []);
 
   // Header
@@ -192,7 +198,7 @@ function render() {
   bp.hidden = !isBot;
   if (isBot) {
     if (!bp.dataset.mounted) { botPanel.mount(st.bot); bp.dataset.mounted = '1'; }
-    if (bt) botPanel.update(bt.result, bt.bars);
+    if (bt) botPanel.update(bt.result, bt.bars, botData?.spotUntil ?? null);
     else botPanel.setStatus(botError ? `Couldn't load Binance data (${botError}).` : 'Loading Binance data…');
   }
 

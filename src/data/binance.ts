@@ -7,11 +7,12 @@ export type BotInterval = '1h' | '4h' | '1d';
 export const INTERVAL_SEC: Record<BotInterval, number> = { '1h': 3600, '4h': 14400, '1d': 86400 };
 
 const BASE = '/api/binance';
-/** Binance spot, used only for daily history back to 2017 (the all-time high). */
-const SPOT = '/api/bnspot/api/v3/klines?symbol=BTCUSDT';
-const COINM = `${BASE}/dapi/v1/klines?symbol=${COINM_SYMBOL}`;
+/** A kline endpoint and its page size (spot caps a page at 1000, COIN-M at 1500). */
+type Source = { url: string; page: number };
+const COINM: Source = { url: `${BASE}/dapi/v1/klines?symbol=${COINM_SYMBOL}`, page: 1500 };
+/** Binance spot BTCUSDT: history before the contract existed (Aug 2017 → Aug 2020) and the 2017 high. */
+const SPOT: Source = { url: '/api/bnspot/api/v3/klines?symbol=BTCUSDT', page: 1000 };
 const TIMEOUT_MS = 20_000;
-const PAGE = 1500;
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -26,15 +27,15 @@ export function parseKlines(rows: Kline[]): Bar[] {
 }
 
 /** Klines from `startSec` to now, paged backwards. The still-forming last bar is dropped. */
-export async function fetchKlines(interval: BotInterval, startSec: number, url = COINM): Promise<Bar[]> {
+export async function fetchKlines(interval: BotInterval, startSec: number, src: Source = COINM): Promise<Bar[]> {
   const pages: Bar[][] = [];
   let end = Date.now();
-  for (let n = 0; n < 40; n++) {
-    const rows = await getJson<Kline[]>(`${url}&interval=${interval}&limit=${PAGE}&endTime=${end}`);
+  for (let n = 0; n < 60; n++) {
+    const rows = await getJson<Kline[]>(`${src.url}&interval=${interval}&limit=${src.page}&endTime=${end}`);
     if (!rows.length) break;
     const bars = parseKlines(rows);
     pages.unshift(bars);
-    if (bars[0].time <= startSec || rows.length < PAGE) break;
+    if (bars[0].time <= startSec || rows.length < src.page) break;
     end = rows[0][0] - 1;
   }
   const all = pages.flat().filter((b) => b.time >= startSec);
@@ -68,16 +69,26 @@ export function loadDailyHistory() {
   return dailyAll;
 }
 
-const cache = new Map<string, Promise<{ bars: Bar[]; funding: FundingEvent[]; daily: Bar[] }>>();
+export interface BotData {
+  bars: Bar[]; funding: FundingEvent[]; daily: Bar[];
+  /** Bars before this time are spot BTCUSDT (the contract didn't exist yet); null if none. */
+  spotUntil: number | null;
+}
+const cache = new Map<string, Promise<BotData>>();
 
-/** Cached per interval and lookback. */
+/** Cached per interval and lookback. Lookbacks before the contract's launch are filled with spot bars. */
 export function loadBotData(interval: BotInterval, years: number) {
   const key = `${interval}|${years}`;
   let p = cache.get(key);
   if (!p) {
     const startSec = Math.floor(Date.now() / 1000 - years * 365.25 * 86400);
-    p = Promise.all([fetchKlines(interval, startSec), fetchFunding(startSec).catch(() => []), loadDailyHistory()])
-      .then(([bars, funding, daily]) => ({ bars, funding, daily }));
+    const spot = startSec < LAUNCH_SEC + 30 * 86400 ? fetchKlines(interval, Math.max(startSec, SPOT_START_SEC), SPOT) : Promise.resolve([]);
+    p = Promise.all([fetchKlines(interval, startSec), spot, fetchFunding(startSec).catch(() => []), loadDailyHistory()])
+      .then(([perp, spotBars, funding, daily]) => {
+        const first = perp[0]?.time ?? Infinity;
+        const before = spotBars.filter((b) => b.time < first);
+        return { bars: [...before, ...perp], funding, daily, spotUntil: before.length ? first : null };
+      });
     p.catch(() => cache.delete(key));
     cache.set(key, p);
   }

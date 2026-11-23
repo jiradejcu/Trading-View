@@ -65,7 +65,9 @@ in-sample "best lag" is curve-fitting. Treat this as an exploration tool, not a 
 ### The bottom bot (backtest)
 
 Binance COIN-M `BTCUSD_PERP` klines (1h / 4h / 1d) and funding rates, BTC-margined inverse
-contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). Logic in
+contracts. "Since 2017" fills the time before the contract's launch (Aug 2020) with spot `BTCUSDT`
+bars (no funding), so the 2018 bear market is included. Contracts are $100 each;
+PnL = contracts × 100 × (1/entry − 1/exit), in BTC. Logic in
 `src/bot/bottomBot.ts`:
 
 - **Bottom**: a bar whose low is below the previous *left* bars and isn't undercut by the
@@ -81,14 +83,15 @@ contracts ($100 each; PnL = contracts × 100 × (1/entry − 1/exit), in BTC). L
   - *Bear market*: the close is at least 50% (settable) below the all-time high known at that
     bar: Binance daily highs (spot BTCUSDT since 2017, which covers the 2017 high, plus the contract since 2020).
   - *Uptrend*: the close is above a rising EMA of 200 bars (settable; 0 = off).
-- Fees per side and real funding payments are charged. A bar that opens through the stop fills at its open. Slippage and
-  liquidation aren't modelled.
+- Fees per side, slippage per fill (0.05% default) and real funding payments are charged. A bar
+  that opens through the stop fills at its open. Liquidation isn't modelled.
 
-Defaults (4h, left 20, right 3, stop 0.5% under the bottom, no re-entry, ATH −50%) were
-picked by tuning on 2020–2023 and checking on 2024–2026, choosing the middle of the region that
-was profitable in both rather than the single best result. The uptrend zone (EMA 100–300 on 4h)
-added return in both halves at the cost of a higher drawdown (about 14% → 20%); used alone it
-only broke even.
+Defaults (4h, left 20, right 12, stop 0.5% under the bottom, no re-entry, ATH −50%, EMA 200)
+were checked in three periods: spot 2017–2020 (including the 2018 bear market, never used for
+tuning), the contract 2020–2023 and 2024–2026. A 12-bar confirmation (two days on 4h) was the
+only delay profitable in all three; a 3-bar one did best on 2020–2026 but lost in 2018, buying
+every bounce of the long slide. Neighbouring settings (left 10–20, EMA 100–300, 0.1% slippage)
+stayed profitable. The uptrend zone adds return; on its own it about breaks even.
 
 This is a backtest only; it places no orders.
 

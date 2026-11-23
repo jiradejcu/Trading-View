@@ -7,14 +7,17 @@ import { fmtDate } from '../lib/time';
 
 export interface BotSettings extends BotParams { interval: BotInterval; years: number; /** Defaults version the settings started from. */ v?: number }
 
-export const BOT_DEFAULTS_VERSION = 3;
+export const BOT_DEFAULTS_VERSION = 4;
 
-// 6 years reaches back to 2021, so the bear-market filter has more than one bear market to act on.
-export const DEFAULT_BOT_SETTINGS: BotSettings = { ...DEFAULT_BOT, interval: '4h', years: 6, v: BOT_DEFAULTS_VERSION };
+/** Longest lookback: back to Aug 2017 (spot BTCUSDT before the contract launched in Aug 2020). */
+export const ALL_YEARS = 9.3;
+// From 2017, so the backtest covers four bear markets (2018, 2022, 2026 and the 2021 dip).
+export const DEFAULT_BOT_SETTINGS: BotSettings = { ...DEFAULT_BOT, interval: '4h', years: ALL_YEARS, v: BOT_DEFAULTS_VERSION };
 
-const YEARS: Record<BotInterval, number[]> = { '1h': [0.5, 1, 2, 3], '4h': [1, 2, 3, 5, 6], '1d': [2, 3, 5, 6] };
+const YEARS: Record<BotInterval, number[]> = { '1h': [0.5, 1, 2, 3], '4h': [1, 2, 3, 5, 6, ALL_YEARS], '1d': [2, 3, 5, 6, ALL_YEARS] };
+const yearLabel = (y: number) => (y === ALL_YEARS ? 'Since 2017' : y < 1 ? `${y * 12} months` : `${y} year${y > 1 ? 's' : ''}`);
 
-type NumKey = 'left' | 'right' | 'slBufferPct' | 'uptrendEma' | 'riskPct' | 'maxLeverage' | 'feePct' | 'athDrawdownPct';
+type NumKey = 'left' | 'right' | 'slBufferPct' | 'uptrendEma' | 'riskPct' | 'maxLeverage' | 'feePct' | 'slipPct' | 'athDrawdownPct';
 const NUMS: { key: NumKey; label: string; min: number; max: number; step: number; title: string }[] = [
   { key: 'left', label: 'Bottom: bars left', min: 1, max: 100, step: 1, title: 'The bottom must be lower than this many bars before it' },
   { key: 'right', label: 'Bottom: bars right', min: 1, max: 50, step: 1, title: 'This many bars must close without a lower low. This is also how late the entry is.' },
@@ -22,6 +25,7 @@ const NUMS: { key: NumKey; label: string; min: number; max: number; step: number
   { key: 'riskPct', label: 'Risk per trade %', min: 0.1, max: 20, step: 0.1, title: 'Equity lost if the initial stop is hit' },
   { key: 'maxLeverage', label: 'Max leverage', min: 1, max: 125, step: 1, title: 'Caps position size when the stop is very close' },
   { key: 'feePct', label: 'Fee per side %', min: 0, max: 1, step: 0.01, title: 'Binance COIN-M taker fee is 0.05% (VIP 0)' },
+  { key: 'slipPct', label: 'Slippage per fill %', min: 0, max: 2, step: 0.01, title: 'Entries fill this much above the open, stop exits this much below the stop' },
   { key: 'athDrawdownPct', label: 'Active below ATH by %', min: 0, max: 95, step: 5, title: 'Bear-market zone: open trades while price is at least this far under its all-time high. 0 = off.' },
   { key: 'uptrendEma', label: 'Also active above EMA (bars)', min: 0, max: 2000, step: 10, title: 'Uptrend zone: also open trades while price closes above a rising EMA of this many bars (200 on 4h ≈ 33 days). 0 = off. With both zones off the bot is always active.' },
 ];
@@ -42,10 +46,10 @@ export class BotPanel {
 
   mount(st: BotSettings) {
     this.st = { ...st };
-    const years = YEARS[st.interval].map((y) => `<option value="${y}"${y === st.years ? ' selected' : ''}>${y < 1 ? `${y * 12} months` : `${y} year${y > 1 ? 's' : ''}`}</option>`).join('');
+    const years = YEARS[st.interval].map((y) => `<option value="${y}"${y === st.years ? ' selected' : ''}>${yearLabel(y)}</option>`).join('');
     this.el.innerHTML = `
       <h3>Bottom bot · backtest</h3>
-      <p class="sub">Binance COIN-M BTCUSD_PERP, long only. Buys when a bottom is confirmed; stop a bit under that bottom, trailed up to each higher low. No take profit. Active while price is deep under its all-time high, or in an uptrend.</p>
+      <p class="sub">Binance COIN-M BTCUSD_PERP (spot BTCUSDT before Aug 2020), long only. Buys when a bottom is confirmed; stop a bit under that bottom, trailed up to each higher low. No take profit. Active while price is deep under its all-time high, or in an uptrend.</p>
       <div class="bp-grid">
         <label>Timeframe<select id="b-interval">${(['1h', '4h', '1d'] as BotInterval[]).map((i) => `<option${i === st.interval ? ' selected' : ''}>${i}</option>`).join('')}</select></label>
         <label>History<select id="b-years">${years}</select></label>
@@ -67,7 +71,8 @@ export class BotPanel {
         The order fills at the next bar's open. New trades (and re-entries) only open inside a zone: the close is at least the set % below the all-time high
         (Binance daily: spot BTCUSDT since 2017 plus the contract, only up to that bar), or the close is above a rising EMA (uptrend). Open trades are still managed normally. No take profit: the trade closes only at the stop, which each new higher bottom raises to just under it.
         After a stop-out, a close back above the stop level re-opens the long, with the stop under the lowest low since the stop-out. Size = risk % ÷ distance to stop, in whole $100 contracts.
-        A bar that opens through the stop fills at the open. Equity and PnL are in BTC (COIN-M is BTC-margined); liquidation and slippage are not modelled.
+        A bar that opens through the stop fills at the open, and every fill pays the set slippage. Equity and PnL are in BTC (COIN-M is BTC-margined); liquidation is not modelled.
+        Before the contract launched (Aug 2020) the backtest runs on spot BTCUSDT prices with no funding.
         Past results don't predict future ones.</p>`;
 
     const $ = <T extends HTMLElement>(id: string) => this.el.querySelector<T>(`#${id}`)!;
@@ -104,11 +109,12 @@ export class BotPanel {
     this.el.querySelector('#b-count')!.textContent = '';
   }
 
-  update(r: BacktestResult, bars: Bar[]) {
+  update(r: BacktestResult, bars: Bar[], spotUntil: number | null = null) {
     const s = r.stats;
     const span = bars.length ? `${fmtDate(bars[0].time)} → ${fmtDate(bars[bars.length - 1].time)}` : '';
     this.el.querySelector('#b-stats')!.innerHTML = `
       <dt>Period</dt><dd>${span}</dd>
+      ${spotUntil ? `<dt title="The contract launched in Aug 2020">Spot prices until</dt><dd>${fmtDate(spotUntil)}</dd>` : ''}
       <dt>Equity (BTC)</dt><dd>${f2(s.startEquity, 2)} → ${f2(s.endEquity, 4)}</dd>
       <dt>Return in BTC</dt><dd class="${cls(s.returnPct)}">${pct(s.returnPct)}</dd>
       <dt title="Equity valued in USD at the first and last close">Return in USD</dt><dd class="${cls(s.usdReturnPct)}">${pct(s.usdReturnPct)}</dd>
@@ -140,7 +146,7 @@ export class BotPanel {
 
 const ws = (p: { time: number; value: number }) => (Number.isFinite(p.value) ? p : { time: p.time });
 
-export function buildBotSpec(bars: Bar[], r: BacktestResult, st: BotSettings, scale: ChartSpec['scaleMode']): ChartSpec {
+export function buildBotSpec(bars: Bar[], r: BacktestResult, st: BotSettings, scale: ChartSpec['scaleMode'], spotUntil: number | null = null): ChartSpec {
   type M = NonNullable<SeriesSpec['markers']>[number];
   const markers: M[] = [];
   for (const b of r.bottoms) if (!b.taken) markers.push({ time: b.time, text: '', position: 'belowBar', color: C.muted, shape: 'circle' });
@@ -152,6 +158,7 @@ export function buildBotSpec(bars: Bar[], r: BacktestResult, st: BotSettings, sc
       markers.push({ time: t.exitTime, text: `${t.r >= 0 ? '+' : ''}${t.r.toFixed(1)}R`, position: 'aboveBar', color: t.pnlBtc >= 0 ? C.up : C.down, shape: 'arrowDown' });
     }
   }
+  if (spotUntil) markers.push({ time: spotUntil, text: 'Perp from here (spot before)', position: 'aboveBar', color: C.muted, shape: 'square' });
   markers.sort((a, b) => a.time - b.time);
 
   // Shade the runs of bars where the bot may open trades. The bear zone wins where both apply.
@@ -166,7 +173,7 @@ export function buildBotSpec(bars: Bar[], r: BacktestResult, st: BotSettings, sc
     else bands.push({ from: a.time, to, color });
   });
   const series: SeriesSpec[] = [
-    { id: 'main', kind: 'candle', title: `BTCUSD_PERP ${st.interval}`, data: bars, main: true, precision: 1, markers },
+    { id: 'main', kind: 'candle', title: `${spotUntil ? 'BTCUSDT → ' : ''}BTCUSD_PERP ${st.interval}`, data: bars, main: true, precision: 1, markers },
     { id: 'stop', kind: 'line', title: 'Stop', data: r.stops.map(ws), color: C.down, lineWidth: 1, dashed: true, steps: true, precision: 1, lastValueVisible: false },
     ...(r.zone.length ? [{ id: 'zone', kind: 'line' as const, title: `Active below (ATH −${st.athDrawdownPct}%)`, data: r.zone, color: C.s4, lineWidth: 1 as const, dashed: true, steps: true, precision: 0, lastValueVisible: false }] : []),
     ...(r.uptrend.length ? [{ id: 'uptrend', kind: 'line' as const, title: `Uptrend EMA ${st.uptrendEma}`, data: r.uptrend, color: C.s3, lineWidth: 1 as const, precision: 0, lastValueVisible: false }] : []),

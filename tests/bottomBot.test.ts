@@ -12,7 +12,7 @@ function barsFromLows(lows: number[], highs?: number[]): Bar[] {
   });
 }
 
-const P: BotParams = { ...DEFAULT_BOT, left: 3, right: 2, slBufferPct: 1, funding: false, feePct: 0, riskPct: 1, maxLeverage: 100, athDrawdownPct: 0, uptrendEma: 0 };
+const P: BotParams = { ...DEFAULT_BOT, left: 3, right: 2, slBufferPct: 1, funding: false, feePct: 0, riskPct: 1, maxLeverage: 100, athDrawdownPct: 0, uptrendEma: 0, slipPct: 0 };
 
 describe('confirmedBottom', () => {
   const lows = [105, 104, 103, 100, 101, 102, 103];
@@ -50,6 +50,15 @@ describe('backtest', () => {
     expect(t.pnlBtc).toBeLessThan(0);
     expect(-t.pnlBtc).toBeLessThanOrEqual(0.01 + 1e-12);
     expect(t.pnlBtc).toBeCloseTo(t.contracts * CONTRACT_USD * (1 / t.entryPrice - 1 / t.exitPrice));
+  });
+
+  it('slippage worsens both the entry and the stop exit', () => {
+    const lows = [105, 104, 103, 100, 101, 102, 103, 95, 95, 95];
+    const highs = lows.map((l, i) => (i === 7 ? 104 : l * 1.01));
+    const bars = barsFromLows(lows, highs);
+    const t = backtest(bars, { ...P, slipPct: 0.1 }).trades[0];
+    expect(t.entryPrice).toBeCloseTo(bars[6].open * 1.001);
+    expect(t.exitPrice).toBeCloseTo(99_000 * 0.999);
   });
 
   it('fills at the open when a bar gaps through the stop', () => {

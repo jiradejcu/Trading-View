@@ -38,6 +38,8 @@ export interface BotParams {
   maxLeverage: number;
   /** Taker fee per side, %. Binance COIN-M default taker is 0.05%. */
   feePct: number;
+  /** Slippage per fill, %: entries fill this much above the open, stop exits this much below. */
+  slipPct: number;
   /** Apply real funding payments (longs pay positive rates). */
   funding: boolean;
   /**
@@ -48,21 +50,22 @@ export interface BotParams {
 }
 
 /**
- * Tuned on Binance 4h data from 2020–2023 and checked on 2024–2026 (unseen): the region
- * left 10–30 / right 2–5 / buffer 0.5% / no re-entry was profitable in both halves;
- * these are its middle. Finer tuning didn't carry over to the unseen period.
- * The uptrend zone (EMA 100–300 on 4h) added return in both halves for a higher drawdown;
- * on its own, without the bear-market zone, it only broke even.
+ * Checked on Binance 4h data in three periods: spot 2017–2020 (incl. the 2018 bear market,
+ * never used for tuning), the contract 2020–2023 and 2024–2026. right 12 (two days to confirm)
+ * was the only confirmation delay profitable in all three; right 3 did best on 2020–2026 but
+ * lost in 2018, buying every bounce of the long slide. Neighbours (left 10–20, EMA 100–300,
+ * 0.1% slippage) stayed profitable too. The uptrend zone adds return; alone it about breaks even.
  */
 export const DEFAULT_BOT: BotParams = {
   left: 20,
-  right: 3,
+  right: 12,
   slBufferPct: 0.5,
   athDrawdownPct: 50,
   uptrendEma: 200,
   riskPct: 1,
   maxLeverage: 5,
   feePct: 0.05,
+  slipPct: 0.05,
   funding: true,
   reentry: false,
 };
@@ -188,6 +191,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
   const zone: BacktestResult['zone'] = p.athDrawdownPct > 0 ? bars.map((b, i) => ({ time: b.time, value: zoneLevel(i) })) : [];
   const buf = 1 - p.slBufferPct / 100;
   const fee = p.feePct / 100;
+  const slip = p.slipPct / 100;
   const barSec = bars.length > 1 ? bars[1].time - bars[0].time : 86400;
 
   let equity = startEquity;
@@ -220,7 +224,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
 
     // 1) Fill a signal from the previous close at this bar's open.
     if (pending && !pos) {
-      const entry = b.open;
+      const entry = b.open * (1 + slip);
       const stop: number = pending.stop;
       if (entry > stop) {
         const lossPerContract = pnl(1, entry, stop) * -1; // BTC lost per contract at the stop
@@ -258,7 +262,7 @@ export function backtest(bars: Bar[], p: BotParams, funding: FundingEvent[] = []
       barsIn++;
       if (b.low <= pos.stop) {
         const level: number = pos.stop;
-        close(b.time, Math.min(b.open, level), level > pos.initialStop ? 'Trail stop' : 'Stop');
+        close(b.time, Math.min(b.open, level) * (1 - slip), level > pos.initialStop ? 'Trail stop' : 'Stop');
         if (p.reentry) rearm = { level, low: b.low, lowTime: b.time };
       }
     }
