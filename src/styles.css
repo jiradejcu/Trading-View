@@ -15,6 +15,7 @@
   --s4: #c98500;
   --warn-bg: #3b2f12;
   --warn-text: #f2c94c;
+  --topbar-height: 44px;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -30,13 +31,15 @@ button { cursor: pointer; }
 .up { color: var(--up); }
 .down { color: var(--down); }
 
-#app { display: grid; height: 100vh; height: 100dvh;
-  grid-template-columns: 48px 1fr 300px; grid-template-rows: 44px 1fr;
+#app { position: relative; display: grid; width: 100%; height: 100vh; height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  grid-template-columns: 48px minmax(0, 1fr) 300px; grid-template-rows: var(--topbar-height) minmax(0, 1fr);
   grid-template-areas: "top top top" "tools chart side"; }
 
 .topbar { grid-area: top; display: flex; align-items: center; gap: 4px; padding: 0 8px;
   border-bottom: 4px solid #0c0e15; background: var(--bg); min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .brand { display: grid; place-items: center; width: 34px; flex: none; }
+.chart-controls { display: contents; }
 .tb-btn, .tb-select { background: transparent; border: 0; border-radius: 4px; padding: 6px 8px; white-space: nowrap; }
 .tb-btn:hover, .tb-select:hover { background: var(--panel-2); }
 .tb-select option { background: var(--panel); }
@@ -67,7 +70,7 @@ button { cursor: pointer; }
 .lefttools button.active { color: var(--accent); background: rgba(41, 98, 255, .12); }
 .tool-sep { width: 24px; height: 1px; background: var(--border); margin: 6px 0; }
 
-.chart-area { grid-area: chart; position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.chart-area { grid-area: chart; position: relative; isolation: isolate; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .chart-head { position: absolute; z-index: 3; left: 10px; top: 6px; right: 80px; pointer-events: none; }
 .ch-title { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 #ch-name { font-size: 15px; font-weight: 600; color: var(--text-strong); }
@@ -174,12 +177,13 @@ button { cursor: pointer; }
 .menu button:hover { background: var(--panel-2); }
 .menu .chk { width: 14px; color: var(--accent); }
 
-@media (max-width: 900px) {
-  #app { grid-template-columns: 40px 1fr; grid-template-areas: "top top" "tools chart"; }
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1200px) {
+  #app { grid-template-columns: 40px minmax(0, 1fr); grid-template-areas: "top top" "tools chart"; }
   .lefttools button { width: 32px; height: 32px; }
   .only-narrow { display: inline-block; }
-  .sidebar { position: fixed; right: 0; top: 44px; bottom: 0; width: min(320px, 100vw); background: var(--bg); z-index: 15; transform: translateX(100%); transition: transform .2s; }
-  .sidebar.open { transform: none; }
+  .sidebar { position: fixed; right: env(safe-area-inset-right); top: calc(var(--topbar-height) + env(safe-area-inset-top)); bottom: env(safe-area-inset-bottom); width: min(360px, calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right))); background: var(--bg); z-index: 15; visibility: hidden; transform: translateX(100%); transition: transform .2s, visibility .2s; }
+  .sidebar.open { visibility: visible; transform: none; }
+  #sidebar-close { align-self: flex-end; min-height: 44px; }
   .chart-head { right: 60px; }
   #ch-desc { display: none; }
   /* Compact top bar: short labels, and the ☰ panel button always reachable. */
@@ -188,4 +192,39 @@ button { cursor: pointer; }
   .topbar { gap: 2px; padding: 0 4px; }
   .tb-btn, .tb-select, .seg button { padding: 6px; }
   #watch-toggle { position: sticky; right: 0; background: var(--bg); box-shadow: -8px 0 8px var(--bg); font-size: 16px; }
+}
+
+/* On phones, give the chart the full width and put drawing tools below it.
+   Separate chart controls from the symbol row so the panel toggle never scrolls away. */
+@media (max-width: 600px), (pointer: coarse) and (max-height: 600px) and (max-width: 1200px) {
+  :root { font-size: 14px; --topbar-height: 96px; }
+  #app:has(.topbar[data-kind="model"]), #app:has(.topbar[data-kind="backtest"]) { --topbar-height: 48px; }
+  #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--topbar-height) minmax(0, 1fr) 44px;
+    grid-template-areas: "top" "chart" "tools"; }
+  .topbar { flex-wrap: wrap; overflow: hidden; gap: 0 4px; border-bottom-width: 1px; font-size: 14px; }
+  .topbar > .spacer { min-width: 0; }
+  .symbol-btn { max-width: calc(100% - 150px); min-width: 0; }
+  #symbol-label { overflow: hidden; text-overflow: ellipsis; }
+  .chart-controls { display: flex; order: 1; flex: 0 0 100%; min-width: 0; align-items: center; overflow-x: auto; scrollbar-width: none; }
+  .chart-controls > * { flex-shrink: 0; }
+  .topbar:is([data-kind="model"], [data-kind="backtest"]) .chart-controls { display: none; }
+  .tb-btn, .tb-select, .seg button { min-height: 44px; padding: 6px 10px; }
+  #watch-toggle { position: static; flex: 0 0 44px; box-shadow: none; }
+  .lefttools { flex-direction: row; gap: 4px; padding: 0 8px; border-right: 0; border-top: 1px solid var(--border); }
+  .lefttools button { width: 44px; height: 44px; }
+  .tool-sep { height: 24px; width: 1px; margin: 0 6px; }
+  .chart-head { left: 8px; }
+  .ch-title { gap: 4px; }
+  .lg-toggle { min-width: 32px; min-height: 32px; }
+  .bottombar { height: 44px; padding: 0 4px; gap: 4px; }
+  .bottombar > .seg { flex-shrink: 0; }
+  .seg.small button { padding: 4px 6px; }
+  #clock { display: none; }
+  .sidebar { font-size: 14px; }
+  .wl-row { min-height: 44px; }
+  .mp-field select, .bp-grid input, .bp-grid select, #modal-input { font-size: 16px; min-height: 44px; }
+  .mp-btn, .mp-check, .menu button { min-height: 44px; }
+  .modal { padding-top: max(16px, env(safe-area-inset-top)); }
+  .ml-row { grid-template-columns: 100px minmax(0, 1fr) auto; padding: 12px; gap: 6px; }
+  .banner { bottom: calc(96px + env(safe-area-inset-bottom)); width: calc(100% - 24px); }
 }

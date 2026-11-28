@@ -16,8 +16,20 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 
 // ---- PWA: register the service worker (production builds only) --------------
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => { /* app still works without it */ });
+    navigator.serviceWorker.register('./sw.js?v=2', { updateViaCache: 'none' }).then((registration) => {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') registration.update().catch(() => {});
+      });
+    }).catch(() => { /* app still works without it */ });
   });
 }
 
@@ -250,7 +262,7 @@ function renderWatchlist() {
 function setSymbol(id: string) {
   st.symbol = id;
   if (st.compare === id) st.compare = null;
-  $('#sidebar').classList.remove('open');
+  setSidebarOpen(false);
   render();
 }
 
@@ -275,7 +287,15 @@ $('#scale-group').addEventListener('click', (e) => {
   st.scale = s;
   render();
 });
-$('#watch-toggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+function setSidebarOpen(open: boolean) {
+  $('#sidebar').classList.toggle('open', open);
+  $('#watch-toggle').setAttribute('aria-expanded', String(open));
+}
+$('#watch-toggle').addEventListener('click', () => setSidebarOpen(!$('#sidebar').classList.contains('open')));
+$('#sidebar-close').addEventListener('click', () => {
+  setSidebarOpen(false);
+  $('#watch-toggle').focus();
+});
 
 // Drawing tools
 const setTool = (t: Tool) => {
@@ -357,7 +377,7 @@ list.addEventListener('click', (e) => {
 });
 window.addEventListener('keydown', (e) => {
   const typing = (e.target as HTMLElement).matches('input, select, textarea');
-  if (e.key === 'Escape') { closeSearch(); menu.hidden = true; setTool('cursor'); }
+  if (e.key === 'Escape') { closeSearch(); menu.hidden = true; setSidebarOpen(false); setTool('cursor'); }
   else if (!typing && modal.hidden && /^[a-z]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); openSearch(e.key); }
   else if (!typing && e.key === '/') { e.preventDefault(); openSearch(); }
 });

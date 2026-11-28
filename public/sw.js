@@ -1,6 +1,6 @@
 // Service worker: makes the app installable and keeps working offline with the
 // last data it saw. Bump VERSION to drop old caches.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `lagline-shell-${VERSION}`;
 const DATA = `lagline-data-${VERSION}`;
 
